@@ -45,8 +45,6 @@ docs/                GitHub Pages website
 src/main/resources   icons and bundled resources
 ```
 
-## Branding notice
-
 **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
 ## License
 
