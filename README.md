@@ -2,9 +2,7 @@
 
 **LiteLauncher** is a lightweight open-source desktop launcher focused on speed, clarity, and a clean user experience.
 
-Created by **Abcik**.
-
-Contact: **abcik@ukr.net**
+Created by **Abcik**. Contact: **abcik@ukr.net**
 
 ## Why LiteLauncher
 
