@@ -45,28 +45,6 @@ docs/                GitHub Pages website
 src/main/resources   icons and bundled resources
 ```
 
-## Run locally
-
-### Maven
-
-```bash
-mvn compile exec:java
-```
-
-### Plain JDK
-
-```bash
-mkdir -p out
-javac -d out $(find src/main/java -name '*.java')
-java -cp out:src/main/resources net.litelauncher.app.LiteLauncherApplication
-```
-
-## Public site pages
-
-- `/` — project overview
-- `/privacy.html` — privacy statement
-- `/terms.html` — terms of use
-
 ## Branding notice
 
 **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
