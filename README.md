@@ -4,6 +4,9 @@
 
 Created by **Abcik**. Contact: **abcik@ukr.net**
 
+**!!! WORK STILL IN PROGRESS !!!**
+
+
 ## Why LiteLauncher
 
 - lightweight interface with minimal visual noise
