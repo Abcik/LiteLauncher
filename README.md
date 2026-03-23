@@ -4,9 +4,11 @@
 
 Created by **Abcik**. Contact: **abcik@ukr.net**
 
+
+
 **!!! WORK STILL IN PROGRESS !!!**
-**!!! WORK STILL IN PROGRESS !!!**
-**!!! WORK STILL IN PROGRESS !!!**
+
+
 
 ## Why LiteLauncher
 
