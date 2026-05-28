@@ -35,7 +35,7 @@ The goal is transparency where it matters most:
 - how the launcher chooses Java;
 - how Minecraft versions/libraries/assets are resolved;
 - how the game process is started;
-- how the update server exposes manifest/download endpoints.
+- how the bootstrap consumes update manifests and verifies launcher downloads
 
 The goal is **not** to publish a clone-ready copy of the official LiteLauncher visual identity.
 
