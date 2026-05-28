@@ -11,8 +11,6 @@ This repository is a **public transparency source release**. It is intended to l
 - `bootstrap/` — update/launch layer, manifest parsing, launcher download verification, Java runtime download/extraction logic.
 - `installer/` — install paths, bootstrap placement, OS shortcut/script creation logic.
 - `launcher/` — backend launcher code: account/profile handling, Microsoft auth flow, encrypted session storage, Minecraft version resolving, downloads, Java runtime service, launch argument generation and game process startup.
-- `server/` — Java HTTP server for static hosting, manifest API, download endpoints, rate limiting and request logging.
-- `web/` — public placeholder only; the official pixel website implementation is redacted.
 - `docs/` — public architecture, redaction and security notes.
 
 ## What is intentionally redacted
