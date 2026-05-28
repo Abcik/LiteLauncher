@@ -19,5 +19,3 @@ You may not, without explicit written permission from the project owner:
 - publish production configs, logs, credentials or user session files.
 
 The official UI, artwork, bitmap font/glyph data, website presentation and product identity are not licensed for reuse by this repository.
-
-If you want this repository to be a strict OSI-style open-source release, replace this file with a standard open-source license such as GPL-3.0-or-later and keep official assets/trademarks under a separate asset/trademark policy.
