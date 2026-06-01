@@ -16,6 +16,7 @@ import net.litelauncher.backend.modules.java.JavaRuntimeService;
 import net.litelauncher.backend.modules.version.Version;
 import net.litelauncher.backend.modules.version.VersionService;
 import net.litelauncher.backend.platform.OSUtils;
+import net.litelauncher.i18n.I18n;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -57,7 +58,7 @@ public final class GameLaunchService {
         if (profile == null) throw new GameLaunchException("Create or select a profile before launch.", InformationMessages.SELECT_PROFILE);
         if (version == null) throw new GameLaunchException("Select a Minecraft version before launch.", InformationMessages.SELECT_VERSION);
 
-        progress.update(0.01, "Preparing launch...", version.id());
+        progress.update(0.01, I18n.text(state.language, "progress.preparingLaunch"), version.id());
         LaunchAccount account = authService.prepareLaunchAccount(profile);
         LauncherLog.info("Launch account prepared: username=" + account.username() + ", uuid=" + account.uuid() + ", userType=" + account.userType());
 
@@ -87,11 +88,11 @@ public final class GameLaunchService {
         mapLegacyAssets(assetIndex);
 
         if (shouldPatch) {
-            progress.update(0.86, "Patching old client...", resolved.id());
+            progress.update(0.86, I18n.text(state.language, "progress.patchingOldClient"), resolved.id());
             clientJar = clientPatcher.ensurePatched(originalClient.path(), clientSha1(resolved, originalClient));
         }
 
-        progress.update(0.88, "Preparing natives...", resolved.id());
+        progress.update(0.88, I18n.text(state.language, "progress.preparingNatives"), resolved.id());
         Path natives = extractNatives(resolved);
         LauncherLog.info("Natives ready at: " + natives);
 
@@ -103,9 +104,9 @@ public final class GameLaunchService {
         List<String> command = arguments.build(java, resolved, assetIndex, account, state, natives, classpath);
         LauncherLog.info("Command prepared: args=" + command.size() + ", classpathLength=" + classpath.length());
 
-        progress.update(0.99, "Starting game...", resolved.id());
+        progress.update(0.99, I18n.text(state.language, "progress.startingGame"), resolved.id());
         startProcess(command, resolved.id());
-        progress.update(1.0, "Game started", resolved.id());
+        progress.update(1.0, I18n.text(state.language, "progress.gameStarted"), resolved.id());
         LauncherLog.info("Process started.");
         return new LaunchResult(account.updatedProfile());
     }
@@ -138,7 +139,7 @@ public final class GameLaunchService {
     private void addClient(List<DownloadFile> files, ResolvedVersion version, ClientJar client) {
         JsonObject download = version.clientDownload();
         if (download == null || client == null || !client.id().equals(version.clientDownloadId())) return;
-        files.add(new DownloadFile(download.getString("url", ""), client.path(), download.getString("sha1", ""), download.getLong("size", 0L), "Downloading client"));
+        files.add(new DownloadFile(download.getString("url", ""), client.path(), download.getString("sha1", ""), download.getLong("size", 0L), I18n.text("progress.downloadingClient")));
     }
 
     private String clientSha1(ResolvedVersion version, ClientJar client) {
@@ -153,11 +154,11 @@ public final class GameLaunchService {
             JsonObject artifact = library.getObject("downloads", new JsonObject()).getObject("artifact");
             JsonObject nativeArtifact = nativeArtifact(library);
 
-            if (artifact != null) files.add(downloadFile(artifact, library.getString("url", LIBRARIES_URL), library.getString("name", ""), "Downloading libraries"));
+            if (artifact != null) files.add(downloadFile(artifact, library.getString("url", LIBRARIES_URL), library.getString("name", ""), I18n.text(I18n.currentLanguage(), "progress.downloadingLibraries")));
             else if (nativeArtifact == null) addMavenLibrary(files, library);
             else LauncherLog.info("Native-only library has no normal artifact: " + library.getString("name", ""));
 
-            if (nativeArtifact != null) files.add(downloadFile(nativeArtifact, library.getString("url", LIBRARIES_URL), library.getString("name", ""), "Downloading natives"));
+            if (nativeArtifact != null) files.add(downloadFile(nativeArtifact, library.getString("url", LIBRARIES_URL), library.getString("name", ""), I18n.text(I18n.currentLanguage(), "progress.downloadingNatives")));
         }
     }
 
@@ -165,7 +166,7 @@ public final class GameLaunchService {
         JsonObject index = version.assetIndex();
         if (index == null) return null;
         String id = firstText(index.getString("id"), version.assets(), "legacy");
-        return new DownloadFile(index.getString("url", ""), assetIndexPath(id), index.getString("sha1", ""), index.getLong("size", 0L), "Downloading asset index");
+        return new DownloadFile(index.getString("url", ""), assetIndexPath(id), index.getString("sha1", ""), index.getLong("size", 0L), I18n.text("progress.downloadingAssetIndex"));
     }
 
     private void addAssets(List<DownloadFile> files, JsonObject index) throws GameLaunchException {
@@ -178,13 +179,13 @@ public final class GameLaunchService {
             String hash = asset.getString("hash", "");
             if (hash.length() < 2) continue;
             Path path = assetObjectPath(hash);
-            files.add(new DownloadFile(RESOURCES_URL + hash.substring(0, 2) + "/" + hash, path, hash, asset.getLong("size", 0L), "Downloading assets"));
+            files.add(new DownloadFile(RESOURCES_URL + hash.substring(0, 2) + "/" + hash, path, hash, asset.getLong("size", 0L), I18n.text("progress.downloadingAssets")));
         }
     }
 
     private void addMavenLibrary(List<DownloadFile> files, JsonObject library) throws GameLaunchException {
         String path = mavenPath(library.getString("name", ""));
-        if (!path.isBlank()) files.add(new DownloadFile(joinUrl(library.getString("url", LIBRARIES_URL), path), libraryPath(path), "", 0L, "Downloading libraries"));
+        if (!path.isBlank()) files.add(new DownloadFile(joinUrl(library.getString("url", LIBRARIES_URL), path), libraryPath(path), "", 0L, I18n.text(I18n.currentLanguage(), "progress.downloadingLibraries")));
     }
 
     private DownloadFile downloadFile(JsonObject artifact, String baseUrl, String name, String label) throws GameLaunchException {

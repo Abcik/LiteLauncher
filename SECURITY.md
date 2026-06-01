@@ -1,20 +1,17 @@
 # Security policy
 
-Please report security issues privately to the project owner before publishing details.
+Please report security issues privately to the project owner instead of opening
+a public issue with exploit details.
 
-## Useful audit areas
+Contact: abcik@ukr.net
 
-- `launcher/net/litelauncher/backend/modules/auth/` — Microsoft/offline account handling.
-- `launcher/net/litelauncher/backend/modules/download/` — validated downloads and temp-file handling.
-- `launcher/net/litelauncher/backend/modules/java/` — Java runtime download and extraction.
-- `bootstrap/net/litelauncher/bootstrap/` — launcher update logic.
-- `server/net/litelauncher/server/http/` — manifest/download endpoints, static file serving, rate limiting and client IP handling.
+Useful report details:
 
-## Do not publish
+- affected module (`launcher`, `bootstrap` or `installer`);
+- exact version/build if known;
+- operating system and Java version;
+- clear reproduction steps;
+- logs with personal data removed.
 
-- real Microsoft session files;
-- `offline-sessions.json` or `microsoft-sessions.json` from a user's machine;
-- production configs;
-- server logs/visit logs;
-- private release artifacts;
-- credentials, tokens, certificates or deployment keys.
+Do not publish real Microsoft session files, refresh tokens, local account
+files, production configs, server logs or release artifacts.

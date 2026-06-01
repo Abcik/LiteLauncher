@@ -1,5 +1,7 @@
 package net.litelauncher.backend.modules.version;
 
+import net.litelauncher.i18n.I18n;
+
 final class VersionNames {
 
     private VersionNames() {
@@ -20,7 +22,7 @@ final class VersionNames {
 
     static String badge(String id, Version.Type type, boolean custom) {
         if (custom) return customKind(safe(id));
-        return type == Version.Type.SNAPSHOT ? "Snapshot" : "Release";
+        return type == Version.Type.SNAPSHOT ? I18n.text("versions.badge.snapshot") : I18n.text("versions.badge.release");
     }
 
     private static String customKind(String id) {
@@ -30,7 +32,7 @@ final class VersionNames {
         if (lower.contains("fabric")) return "Fabric";
         if (lower.contains("forge")) return "Forge";
         if (lower.contains("quilt")) return "Quilt";
-        return "Custom";
+        return I18n.text("versions.badge.custom");
     }
 
     private static String safe(String value) {

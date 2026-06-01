@@ -1,5 +1,10 @@
 package net.litelauncher.bootstrap;
 
+import java.nio.charset.StandardCharsets;
+import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -7,48 +12,47 @@ final class LauncherManifest {
 
     final String version;
     final String file;
-    final String sha1;
+    final String sha256;
     final long size;
     final int javaMajor;
+    final String signature;
 
-    private LauncherManifest(String version, String file, String sha1, long size, int javaMajor) {
+    private LauncherManifest(String version, String file, String sha256, long size, int javaMajor, String signature) {
         this.version = version;
         this.file = file;
-        this.sha1 = sha1;
+        this.sha256 = sha256;
         this.size = size;
         this.javaMajor = javaMajor;
+        this.signature = signature;
     }
 
     static LauncherManifest parse(String json) throws BootstrapException {
         String version = string(json, "version");
         String file = string(json, "file");
-        String sha1 = normalizeSha1(string(json, "sha1"));
+        String sha256 = string(json, "sha256");
         long size = number(json, "size", 0L);
         int javaMajor = (int) number(json, "javaMajor", 0L);
+        String signature = string(json, "signature");
 
         if (version.isBlank()) throw new BootstrapException("Manifest error.");
         if (file.isBlank()) throw new BootstrapException("Manifest error.");
-        if (!isSha1(sha1)) throw new BootstrapException("Manifest error.");
+        if (sha256.length() != 64) throw new BootstrapException("Manifest error.");
         if (size <= 0L) throw new BootstrapException("Manifest error.");
         if (javaMajor <= 0) javaMajor = currentJavaMajor();
 
-        return new LauncherManifest(version, file, sha1, size, javaMajor);
+        return new LauncherManifest(version, file, sha256, size, javaMajor, signature);
     }
 
     String checksumAlgorithm() {
-        return "SHA-1";
+        return "SHA-256";
     }
 
     String checksum() {
-        return sha1;
+        return sha256;
     }
 
-    private static boolean isSha1(String value) {
-        return value.length() == 40 && value.matches("[0-9a-fA-F]{40}");
-    }
-
-    private static String normalizeSha1(String value) {
-        return value == null ? "" : value.trim().replace(" ", "").replace(":", "");
+    String signature() {
+        return signature;
     }
 
     private static String string(String json, String key) {
@@ -96,4 +100,15 @@ final class LauncherManifest {
             return 17;
         }
     }
+
+    public boolean verify(String publicKey) throws NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, SignatureException {
+        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKey);
+        byte[] signatureBytes = Base64.getDecoder().decode(signature);
+        Signature verifier = Signature.getInstance("Ed25519");
+        verifier.initVerify(KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(publicKeyBytes)));
+        String payload = version + "," + file + "," + sha256 + "," + size + "," + javaMajor;
+        verifier.update(payload.getBytes(StandardCharsets.UTF_8));
+        return verifier.verify(signatureBytes);
+    }
+
 }

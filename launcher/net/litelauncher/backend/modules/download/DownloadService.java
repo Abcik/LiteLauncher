@@ -3,6 +3,7 @@ package net.litelauncher.backend.modules.download;
 import net.litelauncher.backend.InformationMessages;
 import net.litelauncher.backend.LauncherLog;
 import net.litelauncher.backend.modules.launch.GameLaunchException;
+import net.litelauncher.i18n.I18n;
 
 import javax.net.ssl.SSLException;
 import java.io.InputStream;
@@ -63,7 +64,7 @@ public final class DownloadService {
         }
 
         LauncherLog.info("Download check: total=" + plan.size() + ", valid=" + (plan.size() - missing.size()) + ", missing=" + missing.size());
-        report(progress, total, done, plan.size() - missing.size(), plan.size(), "Checking files");
+        report(progress, total, done, plan.size() - missing.size(), plan.size(), I18n.text("progress.checkingFiles"));
         if (missing.isEmpty()) return;
 
         int threads = downloadThreads();
@@ -274,7 +275,7 @@ public final class DownloadService {
         if (progress == null) return;
         double value = total <= 0 ? (filesTotal <= 0 ? 1.0 : filesDone / (double) filesTotal) : done / (double) total;
         value = Math.max(0.0, Math.min(1.0, value));
-        progress.update(value, (label == null || label.isBlank() ? "Downloading files" : label) + "... " + Math.round(value * 100.0) + "%", filesDone + "/" + filesTotal);
+        progress.update(value, (label == null || label.isBlank() ? I18n.text("progress.downloadingFiles") : label) + "... " + Math.round(value * 100.0) + "%", filesDone + "/" + filesTotal);
     }
 
     private String fileName(DownloadFile file) {
@@ -284,7 +285,7 @@ public final class DownloadService {
     }
 
     private String label(DownloadFile file) {
-        if (file == null || file.label().isBlank()) return "Downloading files";
+        if (file == null || file.label().isBlank()) return I18n.text("progress.downloadingFiles");
         return file.label().endsWith("...") ? file.label().substring(0, file.label().length() - 3) : file.label();
     }
 

@@ -15,6 +15,7 @@ import net.litelauncher.backend.modules.auth.Profile;
 import net.litelauncher.backend.modules.version.Version;
 import net.litelauncher.frontend.Theme;
 import net.litelauncher.frontend.modules.auth.SkinAvatar;
+import net.litelauncher.i18n.I18n;
 
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -69,6 +70,7 @@ public final class LauncherStore {
     private Timer hideLaunchProgressTimer;
 
     private LauncherStore() {
+        I18n.setCurrentLanguage(state.language);
         profiles = authService.loadProfiles();
         versions = versionService.loadCachedVersions();
         normalizeProfileSelection();
@@ -353,7 +355,8 @@ public final class LauncherStore {
     public void launchSelectedGame(Consumer<String> onError) {
         if (launchBusy) return;
         launchBusy = true;
-        setLaunchProgress(0.0, "Preparing launch...", "");
+        I18n.setCurrentLanguage(snapshotLanguage());
+        setLaunchProgress(0.0, I18n.text("progress.preparingLaunch"), "");
 
         Profile profile = selectedProfile();
         Version version = selectedVersion();
@@ -373,6 +376,10 @@ public final class LauncherStore {
                 SwingUtilities.invokeLater(() -> failLaunch(null, exception, onError));
             }
         });
+    }
+
+    private Language snapshotLanguage() {
+        return state.language;
     }
 
     private LauncherState launchStateSnapshot() {
@@ -399,7 +406,7 @@ public final class LauncherStore {
 
     private void completeLaunch(LaunchResult result, boolean closeAfterLaunch) {
         if (result != null && result.updatedProfile() != null) applyProfileUpdate(result.updatedProfile());
-        setLaunchProgress(1.0, "Game started", "");
+        setLaunchProgress(1.0, I18n.text("progress.gameStarted"), "");
         if (closeAfterLaunch) {
             closeLauncherWindow();
             return;
@@ -459,6 +466,7 @@ public final class LauncherStore {
         if (runOnEdt(() -> setLanguage(language))) return;
         if (language == null || state.language == language) return;
         state.language = language;
+        I18n.setCurrentLanguage(language);
         saveStateAndEmit(Event.LANGUAGE_CHANGED);
     }
 

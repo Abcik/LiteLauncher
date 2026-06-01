@@ -1,11 +1,23 @@
 # Bootstrap module
 
-This module contains the public update/launch layer:
+This module contains the public LiteLauncher update/launch layer.
 
-- manifest download/cache logic;
+Included:
+
+- launcher manifest download and parsing;
+- cached manifest fallback;
 - launcher jar size/SHA-1 verification;
-- atomic temp-file replacement;
-- Java runtime download/extraction;
-- main launcher process startup.
+- atomic launcher jar replacement;
+- older launcher cleanup;
+- Adoptium JRE download/extraction logic;
+- safe archive extraction checks;
+- process startup for the main launcher.
 
-The official pixel progress UI is redacted and replaced by a console-safe entry point.
+Redacted:
+
+- official pixel progress window;
+- bitmap font/glyph resources;
+- official visual assets.
+
+The public `Bootstrap` entrypoint is console-based so the update flow remains
+easy to inspect without publishing the official UI.

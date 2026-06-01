@@ -25,6 +25,7 @@ import java.util.zip.ZipInputStream;
 
 public final class BootstrapBackend {
 
+    private static final String PUBLIC_KEY = "MCowBQYDK2VwAyEA3Paqfi8Xb+fEZBAxGy1LjMH4YI3SlPW3rKT6kZH7APA=";
     private static final String VERSION_MANIFEST_URL = "https://litelauncher.net/api/v1/launcher/version_manifest.json";
     private static final String TEMP_SUFFIX = ".litelauncher-download";
     private static final int BUFFER_SIZE = 64 * 1024;
@@ -86,19 +87,46 @@ public final class BootstrapBackend {
         try {
             Files.createDirectories(manifest.getParent());
             Files.deleteIfExists(temp);
+
             downloadRaw(VERSION_MANIFEST_URL, temp, null, MANIFEST_TIMEOUT);
-            LauncherManifest parsed = LauncherManifest.parse(Files.readString(temp, StandardCharsets.UTF_8));
+
+            String rawManifest = Files.readString(temp, StandardCharsets.UTF_8);
+            LauncherManifest parsed = LauncherManifest.parse(rawManifest);
+
+            if (!parsed.verify(PUBLIC_KEY)) {
+                log.info("Manifest signature check failed! Trying cached manifest.");
+                OSUtils.deleteQuietly(temp);
+
+                if (!Files.isRegularFile(manifest)) throw new BootstrapException("Manifest signature check failed and cached manifest is missing.");
+
+                String cachedRawManifest = Files.readString(manifest, StandardCharsets.UTF_8);
+                return new ManifestLoad(LauncherManifest.parse(cachedRawManifest), true);
+            }
+
             move(temp, manifest);
+
             log.info("Manifest downloaded and cached: " + manifest);
             return new ManifestLoad(parsed, false);
+
+        } catch (BootstrapException exception) {
+            OSUtils.deleteQuietly(temp);
+            throw exception;
+
         } catch (Exception exception) {
             OSUtils.deleteQuietly(temp);
-            log.error("Unable to download manifest within timeout. Trying cached manifest.", exception);
 
-            if (!Files.isRegularFile(manifest)) throw new BootstrapException("Network error.", exception);
+            log.error("Unable to download or parse manifest. Trying cached manifest.", exception);
+
+            if (!Files.isRegularFile(manifest)) {
+                throw new BootstrapException("Network error and cached manifest is missing.", exception);
+            }
+
             try {
                 log.info("Using cached manifest: " + manifest);
-                return new ManifestLoad(LauncherManifest.parse(Files.readString(manifest, StandardCharsets.UTF_8)), true);
+
+                String cachedRawManifest = Files.readString(manifest, StandardCharsets.UTF_8);
+                return new ManifestLoad(LauncherManifest.parse(cachedRawManifest), true);
+
             } catch (Exception cachedException) {
                 throw new BootstrapException("Manifest error.", cachedException);
             }

@@ -1,6 +1,7 @@
 # Redaction map
 
-This public archive was generated from the private LiteLauncher project with product-identity and pixel-perfect implementation details removed.
+This public archive was generated from the private LiteLauncher project with
+product-identity and pixel-perfect implementation details removed.
 
 ## Kept
 
@@ -14,14 +15,16 @@ This public archive was generated from the private LiteLauncher project with pro
 - Download verification by size/SHA-1 where used by the original code.
 - Java runtime resolving/downloading/extraction logic.
 - Minecraft version resolving, inheritance merging and launch argument generation.
-- Server manifest/download/static handlers, rate limiter and client IP handling.
+- Bootstrap manifest loading/caching/update flow.
+- Installer path and shortcut/script generation logic.
 
 ### Operational code
 
 - Installer path logic.
 - OS shortcut/script generation.
-- Bootstrap manifest loading/caching/update flow.
-- Server runtime and HTTP handlers.
+- Bootstrap update flow.
+- Launcher backend and launch orchestration.
+- Translation resource loading for public-safe pages/messages.
 
 ## Redacted
 
@@ -37,8 +40,8 @@ Removed/replaced:
 - `launcher/net/litelauncher/frontend/modules/field/**`
 - `launcher/net/litelauncher/frontend/modules/overlay/**`
 - `launcher/net/litelauncher/frontend/modules/scroll/**`
-- official `Palette`, `PixelPainter`, scene layout and window shape implementation
-- `launcher/assets/**`
+- official `Palette`, `PixelPainter`, scene layout and window shape implementation;
+- `launcher/assets/**`.
 
 Minimal placeholders remain for backend compatibility:
 
@@ -61,29 +64,21 @@ Kept:
 - `UtilityLog`
 - backend install/update logic.
 
-### Website
-
-The official static website pixel app was replaced with a minimal placeholder page.
-
-Removed/replaced:
-
-- bitmap font JS data;
-- stage/orientation layout system;
-- pixel content registry;
-- custom renderers;
-- official website images/theme assets.
-
 ### Binaries and production material
 
 Removed:
 
 - embedded official `Bootstrap.jar` payload;
+- official shortcut icons;
 - production configs/logs/secrets/deployment files, if any were present;
 - release artifacts.
 
 ## Account storage was not redacted
 
-Account/profile logic is intentionally kept because it is one of the main reasons to publish a transparency source release. Review these files first:
+Account/profile logic is intentionally kept because it is one of the main
+reasons to publish a transparency source release.
+
+Review these files first:
 
 - `launcher/net/litelauncher/backend/modules/auth/AuthService.java`
 - `launcher/net/litelauncher/backend/modules/auth/MicrosoftAuthClient.java`

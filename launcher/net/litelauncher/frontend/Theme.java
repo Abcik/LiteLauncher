@@ -1,9 +1,5 @@
 package net.litelauncher.frontend;
 
-/**
- * Minimal public enum kept because backend state/auth code references the selected UI theme.
- * The official theme palette, pixel renderer and exact UI implementation are intentionally redacted.
- */
 public enum Theme {
 
     LIGHT("light"), DARK("dark");
@@ -17,4 +13,5 @@ public enum Theme {
     public String identifier() {
         return identifier;
     }
+
 }

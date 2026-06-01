@@ -7,6 +7,7 @@ import net.litelauncher.backend.modules.download.DownloadService;
 import net.litelauncher.backend.modules.launch.GameLaunchException;
 import net.litelauncher.backend.modules.launch.LaunchProgress;
 import net.litelauncher.backend.platform.OSUtils;
+import net.litelauncher.i18n.I18n;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -52,7 +53,7 @@ public final class JavaRuntimeService {
             Files.createDirectories(OSUtils.javaDirectory());
             String url = adoptiumUrl(major);
             LauncherLog.info("Java download URL: " + url);
-            downloads.download(List.of(new DownloadFile(url, archive, "", 0, "Downloading Java")), progress::update);
+            downloads.download(List.of(new DownloadFile(url, archive, "", 0, I18n.text("progress.downloadingJava"))), progress::update);
         } catch (GameLaunchException exception) {
             LauncherLog.error("Java runtime download failed: " + runtimeId, exception);
             cleanupRuntimeTemps(runtimeId, tempRoot, archive);
@@ -64,7 +65,7 @@ public final class JavaRuntimeService {
         }
 
         try {
-            progress.update(0.96, "Installing Java...", runtimeId);
+            progress.update(0.96, I18n.text("progress.installingJava"), runtimeId);
             LauncherLog.info("Extracting Java archive: " + archive + " -> " + tempRoot);
             deleteDirectory(tempRoot);
             extractRuntime(archive, tempRoot);

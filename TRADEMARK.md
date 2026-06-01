@@ -1,7 +1,13 @@
-# Trademark and branding
+# Trademark and branding notice
 
-`LiteLauncher`, the official logo, official icons, official website design and official visual identity belong to the LiteLauncher project owner.
+LiteLauncher, the LiteLauncher name, official icons, logos, website identity,
+visual style and product presentation are part of the official LiteLauncher
+project identity.
 
-Public source availability does not grant permission to publish confusing forks, unofficial installers, modified launcher builds or websites under the LiteLauncher name.
+This public source release does not grant permission to publish a modified or
+competing launcher under the LiteLauncher name, to imply endorsement, or to use
+the official visual identity in a confusing way.
 
-Unofficial builds must clearly identify themselves as unofficial and must not imply endorsement by the official LiteLauncher project.
+Minecraft, Mojang and Microsoft are trademarks of their respective owners.
+LiteLauncher is not an official Minecraft product and is not approved by or
+associated with Mojang or Microsoft.
