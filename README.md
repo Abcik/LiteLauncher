@@ -1,3 +1,5 @@
+<img width="880" height="660" alt="v0 3 132" src="https://github.com/user-attachments/assets/54e88acc-fb17-4a02-9cd0-4c5b28aba748" />
+
 # LiteLauncher Public Source
 
 LiteLauncher is a lightweight Minecraft launcher focused on a clean install flow, transparent updates, Microsoft/offline profiles, Minecraft version resolving, Java runtime handling and game launch preparation.
