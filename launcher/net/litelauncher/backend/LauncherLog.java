@@ -14,9 +14,6 @@ public final class LauncherLog {
 
     private static final Object LOCK = new Object();
 
-    private LauncherLog() {
-    }
-
     public static Path file() {
         return OSUtils.logsDirectory().resolve("litelauncher_latest.log");
     }

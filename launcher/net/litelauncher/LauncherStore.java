@@ -1,20 +1,14 @@
 package net.litelauncher;
 
-import net.litelauncher.backend.modules.auth.AuthService;
-import net.litelauncher.backend.modules.auth.AuthException;
-import net.litelauncher.backend.BackendExecutor;
+import net.litelauncher.backend.auth.AuthException;
 import net.litelauncher.backend.InformationMessages;
 import net.litelauncher.backend.LauncherLog;
 import net.litelauncher.backend.LauncherState;
-import net.litelauncher.backend.modules.version.VersionService;
-import net.litelauncher.backend.modules.launch.GameLaunchException;
-import net.litelauncher.backend.modules.launch.GameLaunchService;
-import net.litelauncher.backend.modules.launch.LaunchResult;
+import net.litelauncher.backend.launch.GameLaunchException;
+import net.litelauncher.backend.launch.LaunchResult;
 import net.litelauncher.backend.platform.OSUtils;
-import net.litelauncher.backend.modules.auth.Profile;
-import net.litelauncher.backend.modules.version.Version;
-import net.litelauncher.frontend.Theme;
-import net.litelauncher.frontend.modules.auth.SkinAvatar;
+import net.litelauncher.backend.auth.Profile;
+import net.litelauncher.backend.version.Version;
 import net.litelauncher.i18n.I18n;
 
 import javax.swing.SwingUtilities;
@@ -41,7 +35,8 @@ public final class LauncherStore {
         SCALE_CHANGED,
         SETTINGS_CHANGED,
         FILTERS_CHANGED,
-        LAUNCH_PROGRESS_CHANGED
+        LAUNCH_PROGRESS_CHANGED,
+        GAME_STATUS_CHANGED
     }
 
     @FunctionalInterface
@@ -52,10 +47,7 @@ public final class LauncherStore {
     private static final LauncherStore INSTANCE = new LauncherStore();
 
     private final LauncherState state = LauncherState.load();
-    private final AuthService authService = new AuthService();
-    private final VersionService versionService = new VersionService();
-    private final GameLaunchService gameLaunchService = new GameLaunchService(authService, versionService);
-    private final BackendExecutor backendExecutor = new BackendExecutor();
+    private final LauncherServices services = new LauncherServices();
     private final List<Listener> listeners = new ArrayList<>();
 
     private final Set<String> refreshingProfiles = new HashSet<>();
@@ -64,6 +56,7 @@ public final class LauncherStore {
     private List<Version> versions;
     private boolean refreshingVersions;
     private boolean launchBusy;
+    private int runningGames;
     private double launchProgress;
     private String launchActionText = "";
     private String launchDetailsText = "";
@@ -71,8 +64,8 @@ public final class LauncherStore {
 
     private LauncherStore() {
         I18n.setCurrentLanguage(state.language);
-        profiles = authService.loadProfiles();
-        versions = versionService.loadCachedVersions();
+        profiles = services.authService().loadProfiles();
+        versions = services.versionService().loadCachedVersions();
         normalizeProfileSelection();
         normalizeVersionSelection();
         state.save();
@@ -110,7 +103,7 @@ public final class LauncherStore {
     }
 
     public BufferedImage profileAvatar(Profile profile) {
-        return profile == null ? null : SkinAvatar.create(profile.skinPng(), profile.slim());
+        return null; // Avatar rendering belongs to the redacted official UI layer.
     }
 
     public boolean isSelectedProfile(Profile profile) {
@@ -124,7 +117,7 @@ public final class LauncherStore {
         this.profiles = profiles == null ? List.of() : List.copyOf(profiles);
         trimRefreshingProfiles();
         normalizeProfileSelection();
-        authService.saveProfiles(this.profiles);
+        services.authService().saveProfiles(this.profiles);
 
         saveStateAndEmit(Event.PROFILES_CHANGED);
         if (!Objects.equals(oldSelected, state.selectedProfileId)) emit(Event.SELECTED_PROFILE_CHANGED);
@@ -142,24 +135,24 @@ public final class LauncherStore {
 
         String oldSelected = state.selectedProfileId;
         state.selectedProfileId = profile.id();
-        authService.saveProfiles(this.profiles);
+        services.authService().saveProfiles(this.profiles);
 
         saveStateAndEmit(Event.PROFILES_CHANGED);
         if (!Objects.equals(oldSelected, state.selectedProfileId)) emit(Event.SELECTED_PROFILE_CHANGED);
     }
 
     public void openMicrosoftCallbackServer() throws AuthException {
-        authService.openMicrosoftCallbackServer();
+        services.authService().openMicrosoftCallbackServer();
     }
 
     public void closeMicrosoftCallbackServer() {
-        authService.closeMicrosoftCallbackServer();
+        services.authService().closeMicrosoftCallbackServer();
     }
 
     public void signInWithMicrosoft(Consumer<String> onError) {
-        backendExecutor.run(() -> {
+        services.backendExecutor().run(() -> {
             try {
-                Profile profile = authService.signInWithMicrosoft(theme(), language());
+                Profile profile = services.authService().signInWithMicrosoft(theme(), language());
                 SwingUtilities.invokeLater(() -> addProfile(profile));
             } catch (Exception exception) {
                 LauncherLog.error("Microsoft sign-in failed.", exception);
@@ -201,7 +194,7 @@ public final class LauncherStore {
                     : this.profiles.get(Math.min(index, this.profiles.size() - 1)).id();
         }
 
-        authService.saveProfiles(this.profiles);
+        services.authService().saveProfiles(this.profiles);
         saveStateAndEmit(Event.PROFILES_CHANGED);
         if (!Objects.equals(oldSelected, state.selectedProfileId)) {
             emit(Event.SELECTED_PROFILE_CHANGED);
@@ -213,9 +206,9 @@ public final class LauncherStore {
         if (profile == null || !profile.microsoft() || refreshingProfiles.contains(profile.id())) return;
         refreshingProfiles.add(profile.id());
 
-        backendExecutor.run(() -> {
+        services.backendExecutor().run(() -> {
             try {
-                Profile updated = authService.refreshMicrosoftProfile(profile);
+                Profile updated = services.authService().refreshMicrosoftProfile(profile);
                 SwingUtilities.invokeLater(() -> applyProfileUpdate(updated));
             } catch (AuthException exception) {
                 LauncherLog.error("Unable to refresh Microsoft profile.", exception);
@@ -230,7 +223,6 @@ public final class LauncherStore {
         });
     }
 
-
     private void removeExpiredMicrosoftProfile(Profile profile) {
         int index = profileIndex(profile == null ? null : profile.id());
         if (index < 0) return;
@@ -240,7 +232,7 @@ public final class LauncherStore {
         profiles.remove(index);
         this.profiles = List.copyOf(profiles);
         normalizeProfileSelection();
-        authService.saveProfiles(this.profiles);
+        services.authService().saveProfiles(this.profiles);
 
         saveStateAndEmit(Event.PROFILES_CHANGED);
         if (!Objects.equals(oldSelected, state.selectedProfileId)) {
@@ -261,7 +253,7 @@ public final class LauncherStore {
             List<Profile> profiles = new ArrayList<>(this.profiles);
             profiles.set(index, profile);
             this.profiles = List.copyOf(profiles);
-            authService.saveProfiles(this.profiles);
+            services.authService().saveProfiles(this.profiles);
         }
 
         emit(Event.PROFILES_CHANGED);
@@ -290,9 +282,9 @@ public final class LauncherStore {
     public void refreshVersions() {
         if (refreshingVersions) return;
         refreshingVersions = true;
-        backendExecutor.run(() -> {
+        services.backendExecutor().run(() -> {
             try {
-                List<Version> loadedVersions = versionService.loadVersions();
+                List<Version> loadedVersions = services.versionService().loadVersions();
                 SwingUtilities.invokeLater(() -> {
                     refreshingVersions = false;
                     applyVersions(loadedVersions);
@@ -308,9 +300,9 @@ public final class LauncherStore {
         if (refreshingVersions) return;
         refreshingVersions = true;
         List<Version> currentVersions = List.copyOf(versions);
-        backendExecutor.run(() -> {
+        services.backendExecutor().run(() -> {
             try {
-                List<Version> loadedVersions = versionService.refreshLocalVersions(currentVersions);
+                List<Version> loadedVersions = services.versionService().refreshLocalVersions(currentVersions);
                 SwingUtilities.invokeLater(() -> {
                     refreshingVersions = false;
                     applyVersionsIfChanged(loadedVersions);
@@ -344,6 +336,10 @@ public final class LauncherStore {
         return launchProgress;
     }
 
+    public boolean gameRunning() {
+        return runningGames > 0;
+    }
+
     public String launchActionText() {
         return launchActionText;
     }
@@ -355,22 +351,19 @@ public final class LauncherStore {
     public void launchSelectedGame(Consumer<String> onError) {
         if (launchBusy) return;
         launchBusy = true;
-        I18n.setCurrentLanguage(snapshotLanguage());
+        I18n.setCurrentLanguage(state.language);
         setLaunchProgress(0.0, I18n.text("progress.preparingLaunch"), "");
 
         Profile profile = selectedProfile();
         Version version = selectedVersion();
         LauncherState snapshot = launchStateSnapshot();
-        backendExecutor.run(() -> {
+        services.backendExecutor().run(() -> {
             try {
-                LaunchResult result = gameLaunchService.launch(profile, version, snapshot, this::setLaunchProgress);
+                LaunchResult result = services.gameLaunchService().launch(profile, version, snapshot, this::setLaunchProgress, this::addRunningGame);
                 SwingUtilities.invokeLater(() -> completeLaunch(result, snapshot.closeAfterLaunch));
             } catch (AuthException exception) {
                 LauncherLog.error("Launch failed.", exception);
                 SwingUtilities.invokeLater(() -> failLaunch(profile, exception, onError));
-            } catch (GameLaunchException exception) {
-                LauncherLog.error("Launch failed.", exception);
-                SwingUtilities.invokeLater(() -> failLaunch(null, exception, onError));
             } catch (Exception exception) {
                 LauncherLog.error("Launch failed.", exception);
                 SwingUtilities.invokeLater(() -> failLaunch(null, exception, onError));
@@ -378,8 +371,15 @@ public final class LauncherStore {
         });
     }
 
-    private Language snapshotLanguage() {
-        return state.language;
+    private void addRunningGame(Process process) {
+        SwingUtilities.invokeLater(() -> {
+            runningGames++;
+            emit(Event.GAME_STATUS_CHANGED);
+        });
+        process.onExit().thenRun(() -> SwingUtilities.invokeLater(() -> {
+            if (runningGames > 0) runningGames--;
+            emit(Event.GAME_STATUS_CHANGED);
+        }));
     }
 
     private LauncherState launchStateSnapshot() {

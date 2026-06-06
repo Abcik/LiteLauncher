@@ -1,11 +1,11 @@
 package net.litelauncher.installer;
 
 /**
- * Public transparency entrypoint.
+ * Public transparency entry point.
  *
- * The official installer UI and embedded Bootstrap.jar are redacted. The
- * install path and shortcut logic remain available in InstallerBackend and
- * InstallerShortcuts for auditing.
+ * The official Swing pixel-perfect installer window is intentionally redacted.
+ * See InstallerBackend, InstallerFiles and InstallerShortcuts for the auditable
+ * installation/path/shortcut logic that is preserved in this repository.
  */
 public final class Installer {
 
@@ -13,8 +13,7 @@ public final class Installer {
     }
 
     public static void main(String[] args) {
-        System.out.println("LiteLauncher installer public transparency source.");
-        System.out.println("Official installer UI, icons and embedded Bootstrap.jar are redacted.");
-        System.out.println("Review InstallerBackend and InstallerShortcuts for install behavior.");
+        System.out.println("LiteLauncher installer UI is redacted in the public source release.");
+        System.out.println("Audit InstallerBackend, InstallerFiles and InstallerShortcuts for installation logic.");
     }
 }

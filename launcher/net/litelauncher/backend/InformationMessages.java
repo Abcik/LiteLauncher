@@ -1,7 +1,7 @@
 package net.litelauncher.backend;
 
-import net.litelauncher.backend.modules.auth.AuthException;
-import net.litelauncher.backend.modules.launch.GameLaunchException;
+import net.litelauncher.backend.auth.AuthException;
+import net.litelauncher.backend.launch.GameLaunchException;
 import net.litelauncher.i18n.I18n;
 
 public final class InformationMessages {
@@ -13,9 +13,6 @@ public final class InformationMessages {
     public static final String DOWNLOAD_ERROR = "error.download";
     public static final String JAVA_ERROR = "error.java";
     public static final String LAUNCH_ERROR = "error.launch";
-
-    private InformationMessages() {
-    }
 
     public static String text(String key) {
         return I18n.text(key);

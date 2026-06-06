@@ -1,21 +1,21 @@
-# Public architecture overview
+# Public Architecture Notes
 
-LiteLauncher is split into five practical components:
+LiteLauncher is split into three public modules in this repository.
 
-1. `installer` — places the bootstrap layer into the user's Minecraft directory and creates OS shortcuts/scripts.
-2. `bootstrap` — downloads and validates the launcher manifest, launcher jar and Java runtime, then starts the main launcher.
-3. `launcher` — manages profiles, auth, versions, downloads, Java runtimes and Minecraft launch arguments.
-4. `server` — serves the static site, launcher manifest API and download endpoints.
-5. `web` — official pixel website in the private repository; only a placeholder is included here.
+## Installer
 
-## Runtime flow
+The installer prepares the LiteLauncher directory structure, writes the bootstrap payload in official builds and creates OS-specific launch scripts/shortcuts.
 
-User downloads installer → installer places bootstrap → shortcut starts bootstrap → bootstrap checks manifest and launcher jar → launcher handles accounts/version/downloads/runtime → launcher starts Minecraft.
+In this public source release, the official installer UI and embedded production `Bootstrap.jar` are removed. The path and shortcut logic remains available for review.
 
-## Trust-sensitive areas
+## Bootstrap
 
-- Auth/session storage: `launcher/net/litelauncher/backend/modules/auth/`
-- Download verification: `launcher/net/litelauncher/backend/modules/download/`, `bootstrap/net/litelauncher/bootstrap/BootstrapBackend.java`
-- Java runtime handling: `launcher/net/litelauncher/backend/modules/java/`, bootstrap runtime code
-- Minecraft launch: `launcher/net/litelauncher/backend/modules/launch/`
-- Distribution server: `server/net/litelauncher/server/http/`
+The bootstrap is the update layer between the OS shortcut and the main launcher. It loads a signed manifest, verifies launcher downloads, keeps a cached manifest fallback, ensures a Java runtime and starts the main launcher jar.
+
+The official progress window is removed, but the update/verification logic remains available for review.
+
+## Launcher
+
+The launcher backend handles profile/account storage, Microsoft authentication, encrypted session persistence, Minecraft version resolving, downloads, Java runtime selection and game launch argument generation.
+
+The official Swing pixel-perfect UI is removed. Placeholder entry points keep the public tree understandable without disclosing the product shell.

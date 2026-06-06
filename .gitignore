@@ -1,0 +1,32 @@
+# Build outputs
+*.class
+*.jar
+*.war
+*.ear
+out/
+build/
+target/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# LiteLauncher local/private runtime data
+*.log
+logs/
+**/microsoft-sessions.json
+**/offline-sessions.json
+**/launcher-state.json
+**/.env
+.env
+
+# Release artifacts / private payloads
+payload/Bootstrap.jar
+files/
+dist/
+release/

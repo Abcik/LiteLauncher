@@ -4,23 +4,21 @@ import net.litelauncher.backend.platform.OSUtils;
 import net.litelauncher.ui.UtilityLog;
 
 /**
- * Public transparency entrypoint.
+ * Public transparency entry point.
  *
- * The official pixel progress UI is redacted. This console entrypoint keeps
- * the update/verification flow runnable for private inspection if the rest
- * of the official distribution artifacts are provided.
+ * The official lazy pixel progress window is intentionally redacted. The update
+ * backend is preserved and can still be audited through BootstrapBackend and the
+ * related manifest/download/runtime services.
  */
 public final class Bootstrap {
 
     private Bootstrap() {
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         UtilityLog log = new UtilityLog(OSUtils.logsDirectory().resolve("litelauncher_bootstrap.log"));
-        log.start("Bootstrap public transparency entrypoint started");
-        BootstrapBackend.updateAndLaunch((value, details) -> {
-            int percent = (int) Math.round(Math.max(0.0, Math.min(1.0, value)) * 100.0);
-            System.out.println(percent + "% " + details);
-        }, log);
+        log.start("Bootstrap started from public source placeholder");
+        System.out.println("LiteLauncher bootstrap UI is redacted in the public source release.");
+        System.out.println("Audit BootstrapBackend and related services for update/verification logic.");
     }
 }

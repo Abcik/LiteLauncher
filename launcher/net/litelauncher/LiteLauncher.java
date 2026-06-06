@@ -2,24 +2,27 @@ package net.litelauncher;
 
 import net.litelauncher.backend.LauncherState;
 
+import java.awt.Window;
+
 /**
- * Public transparency entrypoint.
+ * Public transparency entry point.
  *
- * The official desktop UI is intentionally not included in this repository.
- * Review the backend modules for auth, downloads, version resolving,
- * Java runtime handling and game launch logic.
+ * The official LiteLauncher Swing pixel-perfect application shell is intentionally
+ * redacted. Backend services, account/session storage, version resolution,
+ * downloads, Java runtime handling and game launch preparation remain available
+ * for review in this repository.
  */
 public final class LiteLauncher {
 
-    /** Public placeholder for code paths that reference the official Swing window. */
-    public static java.awt.Window window;
+    /** Public placeholder for backend code that references the official window. */
+    public static Window window;
 
     private LiteLauncher() {
     }
 
     public static void main(String[] args) {
-        System.out.println(LauncherState.TITLE + " public transparency source " + LauncherState.LAUNCHER_VERSION);
-        System.out.println("Official pixel-perfect UI and product assets are redacted from this repository.");
-        System.out.println("Start reviewing from net.litelauncher.backend.modules.* and LauncherStore.");
+        System.out.println(LauncherState.TITLE + " " + LauncherState.LAUNCHER_VERSION);
+        System.out.println("Official pixel-perfect UI is redacted in this public source release.");
+        System.out.println("Audit LauncherStore and net.litelauncher.backend.* for launcher logic.");
     }
 }

@@ -1,27 +1,26 @@
-# Launcher module
+# LiteLauncher Launcher Public Source
 
-This module contains the public, reviewable LiteLauncher launcher core.
+This module contains the public-safe LiteLauncher backend/core logic.
 
 Included:
 
-- account/profile handling;
-- Microsoft OAuth, Xbox and Minecraft Services auth flow;
-- encrypted Microsoft session storage;
 - offline profile storage;
-- Minecraft version manifest loading and inheritance resolving;
-- library, asset, native and client download logic;
-- Java runtime selection/download/extraction;
+- Microsoft OAuth/Xbox/Minecraft auth flow;
+- encrypted Microsoft session storage;
+- Minecraft version manifest loading and local version discovery;
+- version inheritance resolving;
+- library, asset, native and client download preparation;
+- Java runtime selection/download helpers;
 - game launch argument generation and process startup;
-- i18n resource loading used by the public-safe callback page.
+- launcher state persistence and normalization;
+- i18n data used by the backend and public-safe placeholders.
 
 Redacted:
 
-- official Swing pixel UI scenes;
-- exact layout coordinates and window shape implementation;
+- official Swing pixel-perfect scenes;
+- exact layout coordinates;
 - text animation system;
-- bitmap font atlas, glyph data and rasterizer internals;
-- official product artwork/assets.
+- bitmap font atlas, glyph data and rasterization details;
+- official logos, illustrations, taskbar/window icons and other product-defining assets.
 
-The public `LiteLauncher` entrypoint is a placeholder. The official desktop
-application entrypoint is not published here because it depends on the private
-UI shell.
+The public `LiteLauncher` entry point is a placeholder. The audit surface is in `LauncherStore` and `net.litelauncher.backend.*`.

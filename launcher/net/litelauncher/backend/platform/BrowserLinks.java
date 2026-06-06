@@ -11,9 +11,6 @@ public final class BrowserLinks {
     public static final String DISCORD = "https://discord.com/invite/DJ2YYnS8YV";
     public static final String GITHUB = "https://github.com/abcik/LiteLauncher";
 
-    private BrowserLinks() {
-    }
-
     public static void open(String url) {
         try {
             OSUtils.openUri(URI.create(url));

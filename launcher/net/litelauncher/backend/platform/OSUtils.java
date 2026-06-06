@@ -6,11 +6,9 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
 import java.awt.Toolkit;
-import java.lang.management.ManagementFactory;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
@@ -21,24 +19,22 @@ public final class OSUtils {
     private static final int MAX_AUTO_MEMORY_MB = 4096;
     private static final int DEFAULT_MEMORY_MB = 2048;
 
+    public static OperatingSystem os() {
+        return OperatingSystem.current();
+    }
+
+    public static void disableOsScaling() {
+        if (os().windows()) System.setProperty("sun.java2d.uiScale", "1");
+    }
+
     public static Path minecraftDirectory() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        String home = System.getProperty("user.home", ".");
-
-        if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-            if (appData != null && !appData.isBlank()) return Path.of(appData, ".minecraft");
-            return Path.of(home, "AppData", "Roaming", ".minecraft");
-        }
-
-        if (os.contains("mac")) return Path.of(home, "Library", "Application Support", "minecraft");
-        return Path.of(home, ".minecraft");
+        return LauncherPaths.minecraftDirectory();
     }
 
     public static int totalMemoryMb() {
         try {
-            OperatingSystemMXBean os = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
-            long megabytes = os.getTotalMemorySize() / 1024L / 1024L;
+            OperatingSystemMXBean system = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+            long megabytes = system.getTotalMemorySize() / 1024L / 1024L;
             if (megabytes <= 0) return 0;
             if (megabytes > Integer.MAX_VALUE) return Integer.MAX_VALUE;
             return (int) megabytes;
@@ -61,23 +57,19 @@ public final class OSUtils {
         return clamp(rounded, MIN_AUTO_MEMORY_MB, MAX_AUTO_MEMORY_MB);
     }
 
-    public static int launcherScale(int logicalWidth) {
-        return launcherScale(logicalWidth, logicalWidth);
-    }
-
     public static int launcherScale(int logicalWidth, int logicalHeight) {
-        int screenWidth = screenWidth();
-        if (screenWidth <= 0 || logicalWidth <= 0) return 1;
+        int width = screenWidth();
+        if (width <= 0 || logicalWidth <= 0) return 1;
 
-        int scale = (screenWidth / 2) / logicalWidth;
+        int scale = (width / 2) / logicalWidth;
         return clamp(scale, 1, maxLauncherScale(logicalHeight));
     }
 
     public static int maxLauncherScale(int logicalHeight) {
-        int screenHeight = screenHeight();
-        if (screenHeight <= 0 || logicalHeight <= 0) return 1;
+        int height = screenHeight();
+        if (height <= 0 || logicalHeight <= 0) return 1;
 
-        return Math.max(1, screenHeight / logicalHeight);
+        return Math.max(1, height / logicalHeight);
     }
 
     public static int screenWidth() {
@@ -97,6 +89,23 @@ public final class OSUtils {
             return size == null ? 0 : size.height;
         } catch (Throwable exception) {
             return 0;
+        }
+    }
+
+    public static boolean is64Bit() {
+        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        return arch.contains("64") || arch.contains("aarch64") || arch.contains("arm64");
+    }
+
+    public static int currentJavaMajor() {
+        String version = System.getProperty("java.version", "17");
+        try {
+            if (version.startsWith("1.")) return Integer.parseInt(version.substring(2, 3));
+            int dot = version.indexOf('.');
+            String major = dot < 0 ? version : version.substring(0, dot);
+            return Math.max(1, Integer.parseInt(major));
+        } catch (Exception ignored) {
+            return 17;
         }
     }
 
@@ -120,88 +129,76 @@ public final class OSUtils {
         openWithSystemCommand(file.toString());
     }
 
-    private static void openWithSystemCommand(String target) throws IOException {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        ProcessBuilder builder;
-
-        if (os.contains("mac")) builder = new ProcessBuilder("open", target);
-        else if (os.contains("win")) builder = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", target);
-        else builder = new ProcessBuilder("xdg-open", target);
-
-        builder.start();
-    }
-
     public static Path versionsDirectory() {
-        return minecraftDirectory().resolve("versions");
+        return LauncherPaths.versionsDirectory();
     }
 
     public static Path librariesDirectory() {
-        return minecraftDirectory().resolve("libraries");
+        return LauncherPaths.librariesDirectory();
     }
 
     public static Path assetsDirectory() {
-        return minecraftDirectory().resolve("assets");
+        return LauncherPaths.assetsDirectory();
     }
 
     public static Path assetIndexesDirectory() {
-        return assetsDirectory().resolve("indexes");
+        return LauncherPaths.assetIndexesDirectory();
     }
 
     public static Path assetObjectsDirectory() {
-        return assetsDirectory().resolve("objects");
+        return LauncherPaths.assetObjectsDirectory();
     }
 
     public static Path liteLauncherDirectory() {
-        return minecraftDirectory().resolve("litelauncher");
+        return LauncherPaths.liteLauncherDirectory();
     }
 
     public static Path javaDirectory() {
-        return liteLauncherDirectory().resolve("java");
+        return LauncherPaths.javaDirectory();
     }
 
     public static Path javaRuntimeDirectory(String runtimeId) {
-        return javaDirectory().resolve(runtimeId == null || runtimeId.isBlank() ? "jre-8" : runtimeId);
+        return LauncherPaths.javaRuntimeDirectory(runtimeId);
     }
 
     public static Path nativesDirectory(String versionId) {
-        String safeId = versionId == null || versionId.isBlank() ? "default" : versionId.replaceAll("[^A-Za-z0-9._-]", "_");
-        return versionsDirectory().resolve(safeId).resolve("natives");
+        return LauncherPaths.nativesDirectory(versionId);
     }
 
     public static Path logsDirectory() {
-        return minecraftDirectory().resolve("logs");
+        return LauncherPaths.logsDirectory();
     }
 
     public static Path launcherProfileFile() {
-        return minecraftDirectory().resolve("launcher_profiles.json");
+        return LauncherPaths.launcherProfileFile();
     }
 
     public static Path launcherProfileMicrosoftStoreFile() {
-        return minecraftDirectory().resolve("launcher_profiles_microsoft_store.json");
+        return LauncherPaths.launcherProfileMicrosoftStoreFile();
     }
 
     public static Path launcherDataDirectory() {
-        return liteLauncherDirectory().resolve("data");
+        return LauncherPaths.launcherDataDirectory();
     }
 
     public static Path authDirectory() {
-        return launcherDataDirectory().resolve("auth");
+        return LauncherPaths.authDirectory();
     }
 
     public static Path launcherStateFile() {
-        return launcherDataDirectory().resolve("launcher-state.json");
+        return LauncherPaths.launcherStateFile();
     }
 
     public static Path versionManifestFile() {
-        return versionsDirectory().resolve("version_manifest_v2.json");
+        return LauncherPaths.versionManifestFile();
     }
 
     public static Path offlineSessionsFile() {
-        return authDirectory().resolve("offline-sessions.json");
+        return LauncherPaths.offlineSessionsFile();
     }
 
     public static Path microsoftSessionsFile() {
-        return authDirectory().resolve("microsoft-sessions.json");
+        return LauncherPaths.microsoftSessionsFile();
     }
 
     public static Path getMinecraftDirectory() {
@@ -209,79 +206,16 @@ public final class OSUtils {
     }
 
     public static String machineId() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("win")) {
-            return firstText(
-                    windowsMachineGuid("HKLM\\SOFTWARE\\Microsoft\\Cryptography"),
-                    windowsMachineGuid("HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Cryptography")
-            );
-        }
-        if (os.contains("mac")) return macHardwareUuid();
-        return firstText(readText(Path.of("/etc/machine-id")), readText(Path.of("/var/lib/dbus/machine-id")));
+        return MachineId.read();
     }
 
-    private static String windowsMachineGuid(String key) {
-        String output = runCommand("reg", "query", key, "/v", "MachineGuid");
-        if (output == null) return null;
-
-        for (String line : output.split("\\R")) {
-            if (!line.contains("MachineGuid")) continue;
-            String[] parts = line.trim().split("\\s+", 3);
-            if (parts.length == 3) return parts[2].trim();
-        }
-        return null;
-    }
-
-    private static String macHardwareUuid() {
-        String output = firstText(
-                runCommand("/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"),
-                runCommand("ioreg", "-rd1", "-c", "IOPlatformExpertDevice")
-        );
-        if (output == null) return null;
-
-        for (String line : output.split("\\R")) {
-            int marker = line.indexOf("IOPlatformUUID");
-            if (marker < 0) continue;
-
-            int first = line.indexOf('"', marker);
-            int second = first < 0 ? -1 : line.indexOf('"', first + 1);
-            int third = second < 0 ? -1 : line.indexOf('"', second + 1);
-            if (second >= 0 && third > second) return line.substring(second + 1, third);
-        }
-        return null;
-    }
-
-    private static String readText(Path file) {
-        try {
-            if (!Files.isRegularFile(file)) return null;
-            return text(Files.readString(file, StandardCharsets.UTF_8));
-        } catch (IOException exception) {
-            return null;
-        }
-    }
-
-    private static String runCommand(String... command) {
-        try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            int code = process.waitFor();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            return code == 0 ? text(output) : null;
-        } catch (IOException exception) {
-            return null;
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-    }
-
-    private static String firstText(String first, String second) {
-        return text(first) != null ? text(first) : text(second);
-    }
-
-    private static String text(String value) {
-        if (value == null) return null;
-        String text = value.trim();
-        return text.isEmpty() ? null : text;
+    private static void openWithSystemCommand(String target) throws IOException {
+        OperatingSystem current = os();
+        ProcessBuilder builder;
+        if (current.macos()) builder = new ProcessBuilder("open", target);
+        else if (current.windows()) builder = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", target);
+        else builder = new ProcessBuilder("xdg-open", target);
+        builder.start();
     }
 
     private static int clamp(int value, int min, int max) {
@@ -289,5 +223,4 @@ public final class OSUtils {
         if (value > max) return max;
         return value;
     }
-
 }

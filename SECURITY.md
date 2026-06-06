@@ -1,17 +1,30 @@
-# Security policy
+# Security Policy
 
-Please report security issues privately to the project owner instead of opening
-a public issue with exploit details.
+## Public audit scope
 
-Contact: abcik@ukr.net
+The most important public audit areas are:
 
-Useful report details:
+- Microsoft authentication flow;
+- offline profile handling;
+- encrypted Microsoft session storage;
+- bootstrap manifest verification and cache fallback;
+- launcher download verification;
+- Java runtime download/extraction;
+- Minecraft library/asset/native download handling;
+- game launch argument generation.
 
-- affected module (`launcher`, `bootstrap` or `installer`);
-- exact version/build if known;
-- operating system and Java version;
-- clear reproduction steps;
-- logs with personal data removed.
+## Sensitive files that must never be published
 
-Do not publish real Microsoft session files, refresh tokens, local account
-files, production configs, server logs or release artifacts.
+Do not publish:
+
+- `microsoft-sessions.json`;
+- `offline-sessions.json` from a real user profile;
+- `launcher-state.json` if it contains private local paths or profile IDs you do not want public;
+- logs containing usernames, local paths, IPs, tokens or stack traces from private machines;
+- server configs, credentials, deployment files, API keys, certificates or release artifacts.
+
+## Reporting issues
+
+Please open a GitHub issue for non-sensitive bugs.
+
+For sensitive security issues, do not paste real tokens, session files or private logs into a public issue. Share only the minimum reproduction details needed to understand the problem.

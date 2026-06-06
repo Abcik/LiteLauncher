@@ -5,8 +5,8 @@ import com.grack.nanojson.JsonParser;
 import com.grack.nanojson.JsonWriter;
 import net.litelauncher.Language;
 import net.litelauncher.backend.platform.OSUtils;
-import net.litelauncher.backend.modules.launch.LauncherCompatibility;
-import net.litelauncher.frontend.Theme;
+import net.litelauncher.backend.launch.LauncherCompatibility;
+import net.litelauncher.Theme;
 
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +16,7 @@ import java.nio.file.Path;
 public class LauncherState {
 
     public static final String TITLE = "LiteLauncher";
-    public static final String LAUNCHER_VERSION = "v0.3.129";
+    public static final String LAUNCHER_VERSION = "v0.3.132";
 
     public static final int LOGICAL_WIDTH = 440;
     public static final int LOGICAL_HEIGHT = 330;

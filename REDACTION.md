@@ -1,88 +1,55 @@
-# Redaction map
+# Redaction Map
 
-This public archive was generated from the private LiteLauncher project with
-product-identity and pixel-perfect implementation details removed.
+This repository is intentionally not a full copy of the official LiteLauncher product.
 
-## Kept
+## Preserved
 
-### Security-sensitive / trust-sensitive code
+- Installer backend/path/shortcut logic.
+- Bootstrap update, signed manifest verification, download verification and Java runtime logic.
+- Launcher account/auth/session storage logic.
+- Minecraft version resolving, download preparation, Java runtime selection and game launch logic.
+- Public-safe placeholder entry points.
+- Documentation needed to understand the public source tree.
 
-- Microsoft OAuth/Xbox/Minecraft auth client code.
-- Local callback server flow.
-- Offline profile handling.
-- Microsoft session encryption/decryption store.
-- Profile conversion to launch accounts.
-- Download verification by size/SHA-1 where used by the original code.
-- Java runtime resolving/downloading/extraction logic.
-- Minecraft version resolving, inheritance merging and launch argument generation.
-- Bootstrap manifest loading/caching/update flow.
-- Installer path and shortcut/script generation logic.
+## Removed or replaced
 
-### Operational code
-
-- Installer path logic.
-- OS shortcut/script generation.
-- Bootstrap update flow.
-- Launcher backend and launch orchestration.
-- Translation resource loading for public-safe pages/messages.
-
-## Redacted
-
-### Launcher UI
-
-Removed/replaced:
-
-- `launcher/net/litelauncher/frontend/scenes/**`
-- `launcher/net/litelauncher/frontend/modules/animation/**`
-- `launcher/net/litelauncher/frontend/modules/text/**`
-- `launcher/net/litelauncher/frontend/modules/render/**`
-- `launcher/net/litelauncher/frontend/modules/button/**`
-- `launcher/net/litelauncher/frontend/modules/field/**`
-- `launcher/net/litelauncher/frontend/modules/overlay/**`
-- `launcher/net/litelauncher/frontend/modules/scroll/**`
-- official `Palette`, `PixelPainter`, scene layout and window shape implementation;
-- `launcher/assets/**`.
-
-Minimal placeholders remain for backend compatibility:
-
-- `net/litelauncher/frontend/Theme.java`
-- `net/litelauncher/frontend/modules/auth/MicrosoftCallbackPage.java`
-- `net/litelauncher/frontend/modules/auth/SkinAvatar.java`
-
-### Installer/bootstrap UI
-
-Removed/replaced:
-
-- custom pixel progress windows;
-- pixel text/glyph rasterizer;
-- official UI painter classes;
-- pixel font atlas/logo assets.
-
-Kept:
-
-- `TaskProgress`
-- `UtilityLog`
-- backend install/update logic.
-
-### Binaries and production material
+### Visual product shell
 
 Removed:
 
-- embedded official `Bootstrap.jar` payload;
-- official shortcut icons;
-- production configs/logs/secrets/deployment files, if any were present;
-- release artifacts.
+- official Swing pixel UI scenes;
+- exact layout coordinates;
+- button/scroll/slider/input visual implementation;
+- custom window shape/pixel-perfect drawing details;
+- text animation system;
+- bitmap font/glyph rasterization implementation and atlas.
 
-## Account storage was not redacted
+Replaced with:
 
-Account/profile logic is intentionally kept because it is one of the main
-reasons to publish a transparency source release.
+- simple placeholder `main` classes that explain where the audit surface lives.
 
-Review these files first:
+### Assets
 
-- `launcher/net/litelauncher/backend/modules/auth/AuthService.java`
-- `launcher/net/litelauncher/backend/modules/auth/MicrosoftAuthClient.java`
-- `launcher/net/litelauncher/backend/modules/auth/MicrosoftCallbackServer.java`
-- `launcher/net/litelauncher/backend/modules/auth/MicrosoftSessionStore.java`
-- `launcher/net/litelauncher/backend/modules/auth/OfflineProfileStore.java`
-- `launcher/net/litelauncher/backend/platform/OSUtils.java`
+Removed:
+
+- official logos;
+- illustrations;
+- taskbar/window icons;
+- bitmap font atlas;
+- installer/bootstrap visual assets;
+- embedded production `Bootstrap.jar`.
+
+### Website and server
+
+Not included:
+
+- official website pixel app;
+- production server implementation;
+- production configs;
+- logs;
+- release automation;
+- future business/ad logic.
+
+## Rationale
+
+The public repository should let users verify that LiteLauncher handles accounts, downloads, updates and Minecraft startup transparently, while protecting the original visual identity and product presentation from clone-ready reuse.

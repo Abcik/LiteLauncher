@@ -1,26 +1,24 @@
-# LiteLauncher Public Source License Notice
+# LiteLauncher Public Source License
 
-Copyright (c) 2026 LiteLauncher project owner.
+Copyright (c) Abcik. All rights reserved unless explicitly stated otherwise.
 
-This repository is published for transparency, review, education and security
-auditing. Unless a file contains a different license header, you may:
+This repository is published as a **source-available transparency release**.
 
-- read and study the source code;
-- reference small parts of the implementation for security review or
-  compatibility analysis;
-- build private local test versions for personal evaluation.
+You may:
 
-You may not, without explicit written permission from the project owner:
+- read the source code;
+- audit the source code for security and privacy behavior;
+- reference small portions for discussion, bug reports or educational review;
+- build private local test copies for personal inspection.
 
-- redistribute official LiteLauncher builds or modified builds using the
-  LiteLauncher name;
-- use LiteLauncher trademarks, logos, icons, website identity or visual style
-  for a competing/confusing product;
-- claim that an unofficial build is endorsed by the official LiteLauncher
-  project;
-- use redacted/private assets from official binaries if you extract them
-  elsewhere;
-- publish production configs, logs, credentials or user session files.
+You may not, without explicit permission from the author:
 
-The official UI, artwork, bitmap font/glyph data, website presentation and
-product identity are not licensed for reuse by this repository.
+- redistribute this project or modified copies as a competing launcher;
+- use LiteLauncher branding, icons, artwork, visual identity or product name in unofficial builds;
+- remove attribution or present your build as the official LiteLauncher;
+- use this repository to publish a clone-ready version of the official product;
+- use any redacted/private assets or production files if you obtained them elsewhere.
+
+The official UI, artwork, website presentation, release pipeline, production server configuration and business logic are not part of this license grant.
+
+This notice is intentionally not an OSI-approved open-source license. The purpose of this repository is transparency, not unrestricted reuse.

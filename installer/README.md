@@ -1,20 +1,18 @@
-# Installer module
+# LiteLauncher Installer Public Source
 
-This module contains the public LiteLauncher installation logic.
+This module contains the public-safe installer logic for LiteLauncher.
 
 Included:
 
-- Minecraft/LiteLauncher path resolution;
-- bootstrap directory creation;
-- Java/runtime directory creation;
-- OS shortcut and launch script generation for Windows, macOS and Linux;
-- atomic resource copy helpers.
+- platform path resolution;
+- bootstrap placement flow;
+- OS script and shortcut creation logic;
+- install progress contract and logging utility.
 
 Redacted:
 
-- official installer pixel UI;
-- official shortcut icons;
-- embedded official `Bootstrap.jar` binary payload.
+- official pixel-perfect Swing installer UI;
+- official installer icons/assets;
+- embedded production `Bootstrap.jar` payload.
 
-The public `Installer` entrypoint is a placeholder. Review `InstallerBackend`
-and `InstallerShortcuts` for the real install behavior.
+The public entry point is a placeholder. The useful audit surface is in `InstallerBackend`, `InstallerFiles` and `InstallerShortcuts`.

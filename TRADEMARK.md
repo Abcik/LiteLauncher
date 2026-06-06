@@ -1,13 +1,7 @@
-# Trademark and branding notice
+# Trademark and Branding Notice
 
-LiteLauncher, the LiteLauncher name, official icons, logos, website identity,
-visual style and product presentation are part of the official LiteLauncher
-project identity.
+The LiteLauncher name, logo, official artwork, official website presentation, pixel-perfect UI design and product identity are not granted for reuse by this public source release.
 
-This public source release does not grant permission to publish a modified or
-competing launcher under the LiteLauncher name, to imply endorsement, or to use
-the official visual identity in a confusing way.
+You may not present a modified or unofficial build as the official LiteLauncher app.
 
-Minecraft, Mojang and Microsoft are trademarks of their respective owners.
-LiteLauncher is not an official Minecraft product and is not approved by or
-associated with Mojang or Microsoft.
+This repository exists for transparency and auditing, not to provide a clone-ready copy of the official product shell.
