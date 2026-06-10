@@ -39,17 +39,6 @@ Removed:
 - installer/bootstrap visual assets;
 - embedded production `Bootstrap.jar`.
 
-### Website and server
-
-Not included:
-
-- official website pixel app;
-- production server implementation;
-- production configs;
-- logs;
-- release automation;
-- future business/ad logic.
-
 ## Rationale
 
 The public repository should let users verify that LiteLauncher handles accounts, downloads, updates and Minecraft startup transparently, while protecting the original visual identity and product presentation from clone-ready reuse.

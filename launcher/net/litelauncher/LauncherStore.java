@@ -4,7 +4,6 @@ import net.litelauncher.backend.auth.AuthException;
 import net.litelauncher.backend.InformationMessages;
 import net.litelauncher.backend.LauncherLog;
 import net.litelauncher.backend.LauncherState;
-import net.litelauncher.backend.launch.GameLaunchException;
 import net.litelauncher.backend.launch.LaunchResult;
 import net.litelauncher.backend.platform.OSUtils;
 import net.litelauncher.backend.auth.Profile;
@@ -157,7 +156,50 @@ public final class LauncherStore {
             } catch (Exception exception) {
                 LauncherLog.error("Microsoft sign-in failed.", exception);
                 SwingUtilities.invokeLater(() -> {
-                    if (onError != null) onError.accept(InformationMessages.SIGN_IN_ERROR);
+                    if (onError != null) onError.accept(InformationMessages.text(InformationMessages.SIGN_IN_ERROR));
+                });
+            }
+        });
+    }
+
+
+    public void uploadMicrosoftSkin(Profile profile, byte[] skinPng, boolean slim, Consumer<String> onError, Runnable onComplete) {
+        updateMicrosoftProfile(profile, InformationMessages.SKIN_ERROR, "Unable to upload Minecraft skin.", onError, onComplete,
+                () -> services.authService().uploadMicrosoftSkin(profile, skinPng, slim));
+    }
+
+    public void setMicrosoftCape(Profile profile, String capeId, Consumer<String> onError, Runnable onComplete) {
+        updateMicrosoftProfile(profile, InformationMessages.CAPE_ERROR, "Unable to update Minecraft cape.", onError, onComplete,
+                () -> services.authService().setMicrosoftCape(profile, capeId));
+    }
+
+    private void updateMicrosoftProfile(Profile profile, String errorKey, String logMessage, Consumer<String> onError, Runnable onComplete,
+                                        MicrosoftProfileUpdate operation) {
+        if (profile == null || !profile.microsoft()) {
+            if (onComplete != null) SwingUtilities.invokeLater(onComplete);
+            return;
+        }
+        services.backendExecutor().run(() -> {
+            try {
+                Profile updated = operation.run();
+                SwingUtilities.invokeLater(() -> {
+                    applyProfileUpdate(updated);
+                    if (onComplete != null) onComplete.run();
+                });
+            } catch (AuthException exception) {
+                LauncherLog.error(logMessage, exception);
+                SwingUtilities.invokeLater(() -> {
+                    if (exception.expiredSession()) removeExpiredMicrosoftProfile(profile);
+                    if (onError != null) onError.accept(InformationMessages.text(exception.expiredSession()
+                            ? InformationMessages.SIGN_IN_ERROR
+                            : errorKey));
+                    if (onComplete != null) onComplete.run();
+                });
+            } catch (Exception exception) {
+                LauncherLog.error(logMessage, exception);
+                SwingUtilities.invokeLater(() -> {
+                    if (onError != null) onError.accept(InformationMessages.text(errorKey));
+                    if (onComplete != null) onComplete.run();
                 });
             }
         });
@@ -202,6 +244,7 @@ public final class LauncherStore {
         }
     }
 
+
     private void refreshMicrosoftProfile(Profile profile) {
         if (profile == null || !profile.microsoft() || refreshingProfiles.contains(profile.id())) return;
         refreshingProfiles.add(profile.id());
@@ -222,6 +265,7 @@ public final class LauncherStore {
             }
         });
     }
+
 
     private void removeExpiredMicrosoftProfile(Profile profile) {
         int index = profileIndex(profile == null ? null : profile.id());
@@ -249,15 +293,20 @@ public final class LauncherStore {
         if (index < 0) return;
 
         boolean changed = !profiles.get(index).equals(profile);
-        if (changed) {
-            List<Profile> profiles = new ArrayList<>(this.profiles);
-            profiles.set(index, profile);
-            this.profiles = List.copyOf(profiles);
-            services.authService().saveProfiles(this.profiles);
-        }
+        if (!changed) return;
+
+        List<Profile> profiles = new ArrayList<>(this.profiles);
+        profiles.set(index, profile);
+        this.profiles = List.copyOf(profiles);
+        services.authService().saveProfiles(this.profiles);
 
         emit(Event.PROFILES_CHANGED);
-        if (changed && Objects.equals(state.selectedProfileId, profile.id())) emit(Event.SELECTED_PROFILE_CHANGED);
+        if (Objects.equals(state.selectedProfileId, profile.id())) emit(Event.SELECTED_PROFILE_CHANGED);
+    }
+
+    @FunctionalInterface
+    private interface MicrosoftProfileUpdate {
+        Profile run() throws AuthException;
     }
 
     public List<Version> versions() {

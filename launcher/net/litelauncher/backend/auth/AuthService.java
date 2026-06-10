@@ -1,10 +1,11 @@
 package net.litelauncher.backend.auth;
 
 import net.litelauncher.Language;
+import net.litelauncher.Theme;
 import net.litelauncher.backend.InformationMessages;
 import net.litelauncher.backend.LauncherLog;
 import net.litelauncher.backend.platform.OSUtils;
-import net.litelauncher.Theme;
+
 import java.net.URI;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ public final class AuthService {
 
     private final OfflineProfileStore offlineProfiles = new OfflineProfileStore();
     private final MicrosoftSessionStore microsoftSessions = new MicrosoftSessionStore();
+    private final MicrosoftProfileCacheStore microsoftProfileCache = new MicrosoftProfileCacheStore();
     private final MicrosoftAuthClient microsoftAuth = new MicrosoftAuthClient();
     private final MicrosoftCallbackPageRenderer callbackPages;
     private final MicrosoftCallbackServer callbackServer;
@@ -34,7 +36,9 @@ public final class AuthService {
 
         List<Profile> profiles = new ArrayList<>(offlineProfiles.read());
         for (Map.Entry<String, MicrosoftSession> entry : microsoftSessions.read().entrySet()) {
-            profiles.add(new MicrosoftAuthResult(entry.getValue()).profile());
+            MicrosoftSession session = entry.getValue();
+            MicrosoftProfileCache cache = microsoftProfileCache.read(session.profileId());
+            profiles.add(new MicrosoftAuthResult(session, cache).profile());
         }
         return List.copyOf(profiles);
     }
@@ -47,6 +51,7 @@ public final class AuthService {
                     .map(Profile::id)
                     .collect(Collectors.toSet());
             microsoftSessions.prune(keep);
+            microsoftProfileCache.prune(keep);
         } catch (Exception exception) {
             LauncherLog.error("Unable to prune Microsoft sessions.", exception);
         }
@@ -66,9 +71,10 @@ public final class AuthService {
             openBrowser(auth.authorizationUrl());
             String code = waitForCallback(auth);
             MicrosoftAuthResult result = microsoftAuth.authenticate(code, auth.codeVerifier(), auth.redirectUri());
-            microsoftSessions.save(result.session());
-            auth.page().complete(callbackPages.successHtml(auth.theme(), auth.language(), result.session().playerName(), result.session().skinPng(), result.session().slim()));
-            return result.profile();
+            saveMicrosoftResult(result);
+            Profile profile = result.profile();
+            auth.page().complete(callbackPages.successHtml(auth.theme(), auth.language(), profile.username(), profile.skinPng(), profile.slim()));
+            return profile;
         } catch (AuthException exception) {
             auth.page().complete(callbackPages.errorHtml(auth.theme(), auth.language(), InformationMessages.WEB_AUTH_ERROR));
             throw exception;
@@ -79,25 +85,25 @@ public final class AuthService {
 
     public Profile refreshMicrosoftProfile(Profile profile) throws AuthException {
         if (profile == null || !profile.microsoft()) return null;
+        return updateMicrosoftProfile(profile, microsoftAuth::refresh).profile();
+    }
 
-        MicrosoftSession session = microsoftSessions.read(profile.id());
-        if (session == null) throw AuthException.expiredSession("Microsoft session was not found.");
+    public Profile uploadMicrosoftSkin(Profile profile, byte[] skinPng, boolean slim) throws AuthException {
+        if (profile == null || !profile.microsoft()) return profile;
+        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.uploadSkin(session, cache, skinPng, slim)).profile();
+    }
 
-        MicrosoftAuthResult updated = microsoftAuth.refresh(session);
-        microsoftSessions.save(updated.session());
-        return updated.profile();
+    public Profile setMicrosoftCape(Profile profile, String capeId) throws AuthException {
+        if (profile == null || !profile.microsoft()) return profile;
+        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.setCape(session, cache, capeId)).profile();
     }
 
     public LaunchAccount prepareLaunchAccount(Profile selectedProfile) throws AuthException {
         if (selectedProfile == null) throw new AuthException("Create or select a profile before launch.");
         if (!selectedProfile.microsoft()) return LaunchAccount.offline(selectedProfile);
 
-        MicrosoftSession session = microsoftSessions.read(selectedProfile.id());
-        if (session == null) throw AuthException.expiredSession("Microsoft session was not found.");
-
         try {
-            MicrosoftAuthResult updated = microsoftAuth.refresh(session);
-            microsoftSessions.save(updated.session());
+            MicrosoftAuthResult updated = updateMicrosoftProfile(selectedProfile, microsoftAuth::refresh);
             return updated.launchAccount();
         } catch (AuthException exception) {
             if (exception.expiredSession()) throw exception;
@@ -105,6 +111,28 @@ public final class AuthService {
         }
     }
 
+    private MicrosoftAuthResult updateMicrosoftProfile(Profile profile, MicrosoftProfileOperation operation) throws AuthException {
+        MicrosoftSession session = requireMicrosoftSession(profile);
+        MicrosoftProfileCache cache = microsoftProfileCache.read(session.profileId());
+        MicrosoftAuthResult updated = operation.run(session, cache);
+        saveMicrosoftResult(updated);
+        return updated;
+    }
+
+    private MicrosoftSession requireMicrosoftSession(Profile profile) throws AuthException {
+        if (profile == null || !profile.microsoft()) throw AuthException.expiredSession("Microsoft session was not found.");
+        MicrosoftSession session = microsoftSessions.read(profile.id());
+        if (session == null) {
+            microsoftProfileCache.delete(profile.id());
+            throw AuthException.expiredSession("Microsoft session was not found.");
+        }
+        return session;
+    }
+
+    private void saveMicrosoftResult(MicrosoftAuthResult result) throws AuthException {
+        microsoftSessions.save(result.session());
+        microsoftProfileCache.save(result.session().profileId(), result.cache());
+    }
 
     private String waitForCallback(PendingMicrosoftAuth auth) throws AuthException {
         try {
@@ -132,10 +160,16 @@ public final class AuthService {
     private void ensureFiles() {
         try {
             Files.createDirectories(OSUtils.authDirectory());
+            microsoftProfileCache.ensureDirectory();
             if (!Files.exists(OSUtils.offlineSessionsFile())) offlineProfiles.write(List.of());
             if (!Files.exists(OSUtils.microsoftSessionsFile())) microsoftSessions.write(Map.of());
         } catch (Exception exception) {
             LauncherLog.error("Unable to prepare auth files.", exception);
         }
+    }
+
+    @FunctionalInterface
+    private interface MicrosoftProfileOperation {
+        MicrosoftAuthResult run(MicrosoftSession session, MicrosoftProfileCache cache) throws AuthException;
     }
 }

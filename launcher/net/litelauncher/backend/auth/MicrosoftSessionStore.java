@@ -16,12 +16,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 public final class MicrosoftSessionStore {
 
+    private static final int VERSION = 2;
     private static final String CIPHER_NAME = "AES/GCM/NoPadding";
     private static final int GCM_TAG_LENGTH_BITS = 128;
     private static final int IV_LENGTH_BYTES = 12;
@@ -35,6 +38,13 @@ public final class MicrosoftSessionStore {
 
         try {
             JsonObject envelope = JsonParser.object().from(Files.readString(file, StandardCharsets.UTF_8));
+            if (envelope.getInt("version", 0) != VERSION) {
+                LauncherLog.info("Removing legacy Microsoft sessions file: " + file);
+                AuthUtils.deleteQuietly(file);
+                write(Map.of());
+                return sessions;
+            }
+
             String plaintext = decrypt(envelope.getString("iv"), envelope.getString("payload"));
             JsonArray entries = JsonParser.object().from(plaintext).getArray("entries", new JsonArray());
             for (Object item : entries) {
@@ -45,11 +55,19 @@ public final class MicrosoftSessionStore {
             }
         } catch (Exception exception) {
             LauncherLog.error("Unable to read Microsoft sessions.", exception);
-            AuthUtils.deleteQuietly(file);
+            reset(file);
         }
         return sessions;
     }
 
+    private void reset(Path file) {
+        AuthUtils.deleteQuietly(file);
+        try {
+            write(Map.of());
+        } catch (Exception exception) {
+            LauncherLog.error("Unable to reset Microsoft sessions file.", exception);
+        }
+    }
 
     public MicrosoftSession read(String accountId) {
         if (!AuthUtils.hasText(accountId)) return null;
@@ -62,7 +80,7 @@ public final class MicrosoftSessionStore {
         write(sessions);
     }
 
-    public void prune(java.util.Set<String> keep) throws AuthException {
+    public void prune(Set<String> keep) throws AuthException {
         Map<String, MicrosoftSession> sessions = read();
         if (sessions.keySet().removeIf(id -> keep == null || !keep.contains(id))) write(sessions);
     }
@@ -86,11 +104,11 @@ public final class MicrosoftSessionStore {
             byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
             JsonObject envelope = new JsonObject();
-            envelope.put("version", 1);
+            envelope.put("version", VERSION);
             envelope.put("cipher", CIPHER_NAME);
             envelope.put("iv", Base64.getEncoder().encodeToString(iv));
             envelope.put("payload", Base64.getEncoder().encodeToString(ciphertext));
-            envelope.put("savedAt", java.time.Instant.now().toString());
+            envelope.put("savedAt", Instant.now().toString());
 
             AuthUtils.writeAtomic(OSUtils.microsoftSessionsFile(), JsonWriter.indent("  ").string().value(envelope).done());
         } catch (AuthException exception) {
@@ -102,22 +120,18 @@ public final class MicrosoftSessionStore {
 
     private MicrosoftSession readSession(JsonObject json) {
         String clientId = AuthUtils.text(json.getString("clientId"));
-        String playerName = AuthUtils.text(json.getString("playerName"));
         String profileId = AuthUtils.text(json.getString("profileId"));
         String refreshToken = AuthUtils.text(json.getString("microsoftRefreshToken"));
-        if (clientId == null || playerName == null || profileId == null || refreshToken == null) return null;
+        if (clientId == null || profileId == null || refreshToken == null) return null;
 
         return new MicrosoftSession(
                 clientId,
                 AuthUtils.firstText(json.getString("redirectUri"), "http://localhost" + MicrosoftAuthConfig.REDIRECT_PATH),
-                playerName,
                 profileId,
                 AuthUtils.text(json.getString("minecraftAccessToken")),
                 AuthUtils.instant(json.getString("minecraftAccessTokenExpiresAt")),
                 refreshToken,
                 AuthUtils.firstText(json.getString("xuid"), ""),
-                AuthUtils.text(json.getString("skinPng")),
-                json.getBoolean("slim", false),
                 AuthUtils.instant(json.getString("savedAt"))
         );
     }
@@ -127,14 +141,11 @@ public final class MicrosoftSessionStore {
         json.put("accountId", accountId);
         json.put("clientId", session.clientId());
         json.put("redirectUri", session.redirectUri());
-        json.put("playerName", session.playerName());
         json.put("profileId", session.profileId());
         json.put("minecraftAccessToken", session.minecraftAccessToken());
         json.put("minecraftAccessTokenExpiresAt", session.minecraftAccessTokenExpiresAt() == null ? null : session.minecraftAccessTokenExpiresAt().toString());
         json.put("microsoftRefreshToken", session.microsoftRefreshToken());
         json.put("xuid", session.xuid());
-        json.put("skinPng", session.skinPng());
-        json.put("slim", session.slim());
         json.put("savedAt", session.savedAt() == null ? null : session.savedAt().toString());
         return json;
     }

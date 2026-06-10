@@ -7,6 +7,7 @@ Included:
 - offline profile storage;
 - Microsoft OAuth/Xbox/Minecraft auth flow;
 - encrypted Microsoft session storage;
+- Microsoft skin upload, cape selection and profile appearance caching;
 - Minecraft version manifest loading and local version discovery;
 - version inheritance resolving;
 - library, asset, native and client download preparation;

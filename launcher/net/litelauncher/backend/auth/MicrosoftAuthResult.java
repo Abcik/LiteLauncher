@@ -2,14 +2,15 @@ package net.litelauncher.backend.auth;
 
 import java.util.Objects;
 
-public record MicrosoftAuthResult(MicrosoftSession session) {
+public record MicrosoftAuthResult(MicrosoftSession session, MicrosoftProfileCache cache) {
 
-    public MicrosoftAuthResult(MicrosoftSession session) {
-        this.session = Objects.requireNonNull(session, "session");
+    public MicrosoftAuthResult {
+        session = Objects.requireNonNull(session, "session");
+        cache = cache == null ? MicrosoftProfileCache.fromSession(session) : cache;
     }
 
     public Profile profile() {
-        return Profile.microsoft(Profile.microsoftId(session.profileId()), session.playerName(), session.skinPng(), session.slim());
+        return cache.profile(session.profileId());
     }
 
     public LaunchAccount launchAccount() {

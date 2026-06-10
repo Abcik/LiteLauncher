@@ -2,7 +2,7 @@
 
 # LiteLauncher Public Source
 
-LiteLauncher is a lightweight Minecraft launcher focused on a clean install flow, transparent updates, Microsoft/offline profiles, Minecraft version resolving, Java runtime handling and game launch preparation.
+LiteLauncher is a lightweight Minecraft launcher focused on a clean install flow, transparent updates, Microsoft/offline profiles, skin and cape management, Minecraft version resolving, Java runtime handling and game launch preparation.
 
 This repository is a **public transparency source release**. It lets users and developers audit the security-sensitive and infrastructure-sensitive parts of LiteLauncher without exposing the official pixel-perfect product shell.
 
@@ -12,7 +12,7 @@ This repository is a **public transparency source release**. It lets users and d
 
 - `bootstrap/` — update/launch layer, signed manifest verification, launcher download verification, cache fallback, Java runtime download/extraction logic.
 - `installer/` — install paths, bootstrap placement, OS shortcut/script creation logic.
-- `launcher/` — backend launcher code: account/profile handling, Microsoft auth flow, encrypted session storage, Minecraft version resolving, downloads, Java runtime service, launch argument generation and game process startup.
+- `launcher/` — backend launcher code: account/profile handling, Microsoft auth flow, encrypted session storage, skin/cape management, Minecraft version resolving, downloads, Java runtime service, launch argument generation and game process startup.
 - `docs/` — public architecture, redaction and security notes.
 
 ## What is intentionally redacted
@@ -33,6 +33,7 @@ The goal is transparency where it matters most:
 
 - how accounts are stored;
 - how Microsoft sign-in works;
+- how Microsoft skin upload, cape selection and profile appearance cache are handled;
 - how downloads are verified;
 - how signed update manifests are consumed by the bootstrap;
 - how the launcher chooses Java;

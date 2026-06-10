@@ -16,7 +16,7 @@ import java.nio.file.Path;
 public class LauncherState {
 
     public static final String TITLE = "LiteLauncher";
-    public static final String LAUNCHER_VERSION = "v0.3.132";
+    public static final String LAUNCHER_VERSION = "v0.4.2";
 
     public static final int LOGICAL_WIDTH = 440;
     public static final int LOGICAL_HEIGHT = 330;

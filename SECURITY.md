@@ -18,10 +18,10 @@ The most important public audit areas are:
 Do not publish:
 
 - `microsoft-sessions.json`;
-- `offline-sessions.json` from a real user profile;
-- `launcher-state.json` if it contains private local paths or profile IDs you do not want public;
-- logs containing usernames, local paths, IPs, tokens or stack traces from private machines;
-- server configs, credentials, deployment files, API keys, certificates or release artifacts.
+- `offline-sessions.json`;
+- Microsoft profile cache JSON files;
+- launcher logs that may include local paths or error details;
+- private signing keys, tokens, secrets or deployment files.
 
 ## Reporting issues
 

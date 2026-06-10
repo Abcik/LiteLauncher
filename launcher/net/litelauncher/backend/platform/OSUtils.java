@@ -201,6 +201,10 @@ public final class OSUtils {
         return LauncherPaths.microsoftSessionsFile();
     }
 
+    public static Path microsoftProfileCacheDirectory() {
+        return LauncherPaths.microsoftProfileCacheDirectory();
+    }
+
     public static Path getMinecraftDirectory() {
         return minecraftDirectory();
     }

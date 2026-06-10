@@ -5,14 +5,19 @@ import java.time.Instant;
 public record MicrosoftSession(
         String clientId,
         String redirectUri,
-        String playerName,
         String profileId,
         String minecraftAccessToken,
         Instant minecraftAccessTokenExpiresAt,
         String microsoftRefreshToken,
         String xuid,
-        String skinPng,
-        boolean slim,
         Instant savedAt
 ) {
+    public MicrosoftSession {
+        clientId = AuthUtils.text(clientId);
+        redirectUri = AuthUtils.text(redirectUri);
+        profileId = AuthUtils.text(profileId);
+        minecraftAccessToken = AuthUtils.text(minecraftAccessToken);
+        microsoftRefreshToken = AuthUtils.text(microsoftRefreshToken);
+        xuid = AuthUtils.firstText(xuid, "");
+    }
 }

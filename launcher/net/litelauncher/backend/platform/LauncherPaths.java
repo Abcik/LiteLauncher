@@ -85,6 +85,10 @@ public final class LauncherPaths {
         return authDirectory().resolve("microsoft-sessions.json");
     }
 
+    public static Path microsoftProfileCacheDirectory() {
+        return authDirectory().resolve("cache");
+    }
+
     private static Path windowsMinecraftDirectory(String home) {
         String appData = System.getenv("APPDATA");
         if (appData != null && !appData.isBlank()) return Path.of(appData, ".minecraft");

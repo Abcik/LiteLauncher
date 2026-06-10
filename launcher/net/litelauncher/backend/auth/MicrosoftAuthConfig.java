@@ -13,6 +13,8 @@ public final class MicrosoftAuthConfig {
     public static final String MINECRAFT_LOGIN_URL = "https://api.minecraftservices.com/authentication/login_with_xbox";
     public static final String MINECRAFT_ENTITLEMENTS_URL = "https://api.minecraftservices.com/entitlements/mcstore";
     public static final String MINECRAFT_PROFILE_URL = "https://api.minecraftservices.com/minecraft/profile";
+    public static final String MINECRAFT_PROFILE_SKINS_URL = "https://api.minecraftservices.com/minecraft/profile/skins";
+    public static final String MINECRAFT_PROFILE_CAPES_ACTIVE_URL = "https://api.minecraftservices.com/minecraft/profile/capes/active";
 
     private static String clientId() {
         String property = System.getProperty("litelauncher.ms.clientId");
