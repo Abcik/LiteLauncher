@@ -1,0 +1,88 @@
+LiteLauncher Source Available License 1.0
+
+Copyright (c) 2026 LiteLauncher Project. All rights reserved except as expressly granted below.
+
+This license is a source-available license. It is not an open-source license as defined by the Open Source Initiative.
+
+1. Definitions
+
+"Software" means the LiteLauncher source code, resources, documentation, and other material in this repository that is owned by the LiteLauncher copyright holder(s), excluding Third-Party Components.
+
+"Licensor" means the copyright holder(s) of the Software.
+
+"Official Project" means the LiteLauncher project, its official repository, website, releases, and other distribution channels designated by the Licensor.
+
+"Derivative Work" means any modified version of the Software or any work based on, incorporating, adapting, or substantially reproducing the Software or a material portion of it.
+
+"Distribution" means providing, publishing, transmitting, selling, sublicensing, making available for download, or otherwise making a copy available to any third party, whether in source or object form.
+
+2. Permission Grant
+
+Subject to this license, the Licensor grants you a limited, worldwide, royalty-free, non-exclusive, non-transferable, and non-sublicensable license to:
+
+(a) view, inspect, and audit the Software;
+(b) download and reproduce the Software for personal, educational, research, security-review, and internal development purposes;
+(c) modify the Software for your own local use, testing, experimentation, or for preparing a contribution to the Official Project;
+(d) compile and run your own local modified or unmodified copies for those permitted purposes; and
+(e) create and maintain a fork of the repository through GitHub functionality for the permitted purposes above, provided that this license and all applicable notices are preserved.
+
+3. Distribution Restrictions
+
+Except for a repository fork expressly permitted by Section 2(e), or source-code changes submitted directly to the Official Project as a contribution, you may not Distribution the Software or any Derivative Work without prior written permission from the Licensor.
+
+In particular, without prior written permission, you may not:
+
+(a) publish or provide modified or unmodified LiteLauncher builds, JAR files, installers, packages, portable copies, mirrors, or other executable distributions;
+(b) publish or distribute a modified, ad-free, advertising-disabled, monetization-disabled, update-disabled, or otherwise altered LiteLauncher build;
+(c) use the Software or a material portion of it as the basis of another launcher or other software product that is distributed or made available to third parties;
+(d) use GitHub Releases, Packages, Pages, Actions artifacts, or another distribution service to provide builds or installers of a Derivative Work;
+(e) sell, license, rent, monetize, or commercially distribute the Software or a Derivative Work; or
+(f) sublicense the Software or grant another person rights that are broader than the rights you received under this license.
+
+A GitHub fork permitted by Section 2(e) may remain publicly visible as source code through GitHub's fork functionality, but it may not be marketed, released, or operated as an independent distribution of LiteLauncher or a competing derivative product.
+
+4. Notices and Attribution
+
+You may not remove or obscure copyright notices, license notices, attribution notices, or notices identifying the Official Project from copies of the Software that you are permitted to make.
+
+5. Trademarks and Branding
+
+This license does not grant any right to use the LiteLauncher name, logo, icons, trade dress, domain names, or other branding to identify or promote a modified or third-party product, service, or distribution.
+
+Use of LiteLauncher branding must not imply sponsorship, endorsement, or official status without prior written permission from the Licensor.
+
+6. Third-Party Components
+
+Third-Party Components are not licensed under this license. They remain subject to their own license terms.
+
+The bundled nanojson source code under Launcher/com/grack/nanojson is licensed under the Apache License, Version 2.0. A copy of that license is provided in LICENSES/Apache-2.0.txt. The original copyright and license notices in those files must be preserved.
+
+Other third-party material, if any, remains subject to the notices and licenses accompanying that material.
+
+7. Contributions
+
+If you intentionally submit source code or other copyrightable material to the Official Project as a pull request, patch, or other contribution, you represent that you have the right to do so and grant the Licensor a perpetual, irrevocable, worldwide, royalty-free, transferable, and sublicensable license to use, reproduce, modify, prepare derivative works of, distribute, publicly display, publicly perform, relicense, and commercially use that contribution as part of or in connection with LiteLauncher.
+
+You retain ownership of your contribution subject to this grant.
+
+8. Ownership
+
+Except for the limited permissions expressly granted by this license, no ownership or other rights in the Software are transferred to you. All rights not expressly granted are reserved by the Licensor.
+
+9. Termination
+
+Your rights under this license terminate automatically if you materially breach its terms. Upon termination, you must stop exercising the rights granted by this license and stop Distribution of any copy for which you no longer have permission.
+
+Termination does not affect licenses applicable to Third-Party Components.
+
+10. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE, SECURE, OR SUITABLE FOR ANY PARTICULAR PURPOSE.
+
+11. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR OTHER DEALINGS IN THE SOFTWARE.
+
+12. Separate Permission
+
+The Licensor may grant additional permissions or commercial licenses in writing. Such permission applies only to the person or entity and scope expressly identified in that written permission.

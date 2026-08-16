@@ -1,32 +1,39 @@
-# Build outputs
-*.class
-*.jar
-*.war
-*.ear
-out/
-build/
-target/
-
-# IDE files
+# IDE / editor
 .idea/
 .vscode/
 *.iml
+.classpath
+.project
+.settings/
 
-# OS files
+# Build output
+out/
+build/
+target/
+dist/
+release/
+*.class
+*.jar
+*.war
+*.zip
+*.tar.gz
+
+# Logs / temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*~
 .DS_Store
 Thumbs.db
 
-# LiteLauncher local/private runtime data
-*.log
-logs/
-**/microsoft-sessions.json
-**/offline-sessions.json
-**/launcher-state.json
-**/.env
+# Local configuration / credentials
 .env
-
-# Release artifacts / private payloads
-payload/Bootstrap.jar
-files/
-dist/
-release/
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+secrets.*
+credentials.*

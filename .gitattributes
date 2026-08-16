@@ -1,0 +1,19 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf
+*.java text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.mf text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.gz binary
+*.zip binary
