@@ -144,13 +144,9 @@ public final class LoaderInstaller {
             return installed.id();
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
-            if (process != null && process.isAlive()) process.destroyForcibly();
             throw new CancellationException("Loader installation cancelled.");
-        } catch (CancellationException exception) {
-            if (process != null && process.isAlive()) process.destroyForcibly();
-            throw exception;
         } finally {
-            if (process != null && process.isAlive()) process.destroyForcibly();
+            stopProcess(process);
             deleteTree(staging);
         }
     }
@@ -242,13 +238,9 @@ public final class LoaderInstaller {
                 throw new IOException("OptiFine patcher exited with code " + process.exitValue());
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
-            if (process != null && process.isAlive()) process.destroyForcibly();
             throw new CancellationException("OptiFine installation cancelled.");
-        } catch (CancellationException exception) {
-            if (process != null && process.isAlive()) process.destroyForcibly();
-            throw exception;
         } finally {
-            if (process != null && process.isAlive()) process.destroyForcibly();
+            stopProcess(process);
         }
     }
 
@@ -511,6 +503,17 @@ public final class LoaderInstaller {
 
     private void writeJsonAtomic(Path file, JsonObject json) throws IOException {
         BackendUtils.writeAtomic(file, JsonWriter.indent("  ").string().value(json).done());
+    }
+
+    private void stopProcess(Process process) {
+        if (process == null || !process.isAlive()) return;
+        process.destroyForcibly();
+        boolean interrupted = Thread.interrupted();
+        while (process.isAlive()) {
+            try { process.waitFor(); }
+            catch (InterruptedException ignored) { interrupted = true; }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
     private void deleteTree(Path root) {

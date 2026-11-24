@@ -431,6 +431,7 @@ public final class ParametersScene extends PopupScene {
         resolutionWidthInput.blur();
         resolutionHeightInput.blur();
         argumentsInput.blur();
+        store.saveState();
     }
 
     @Override

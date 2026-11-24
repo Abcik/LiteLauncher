@@ -112,7 +112,7 @@ public final class BackendUtils {
 
     private static HttpClient createHttpClient(HttpClient.Version version) {
         HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
+                .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.ALWAYS);
         if (version != null) builder.version(version);
         return builder.build();

@@ -22,7 +22,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 public final class MicrosoftSessionStore {
 
@@ -30,10 +29,21 @@ public final class MicrosoftSessionStore {
     private static final String CIPHER_NAME = "AES/GCM/NoPadding";
     private static final int GCM_TAG_LENGTH_BITS = 128;
     private static final int IV_LENGTH_BYTES = 12;
+    private static SecretKeySpec cachedKey;
 
     private final SecureRandom random = new SecureRandom();
 
     public Map<String, MicrosoftSession> read() {
+        try (var ignored = MicrosoftAccountLock.sessions()) {
+            return readOrReset();
+        } catch (AuthException exception) {
+            LauncherLog.error("Unable to read or reset Microsoft sessions.", exception);
+            return Map.of();
+        }
+    }
+
+    /** Must be called under the sessions lock, including the reset after a failed read. */
+    private Map<String, MicrosoftSession> readOrReset() throws AuthException {
         Map<String, MicrosoftSession> sessions = new LinkedHashMap<>();
         Path file = LauncherPaths.microsoftSessionsFile();
         if (!Files.isRegularFile(file)) return sessions;
@@ -51,19 +61,12 @@ public final class MicrosoftSessionStore {
                 if (accountId != null && session != null) sessions.put(accountId, session);
             }
         } catch (Exception exception) {
-            LauncherLog.error("Unable to read Microsoft sessions.", exception);
-            reset(file);
+            LauncherLog.error("Unable to read Microsoft sessions; resetting saved accounts.", exception);
+            BackendUtils.deleteQuietly(file);
+            sessions.clear();
+            write(sessions);
         }
         return sessions;
-    }
-
-    private void reset(Path file) {
-        BackendUtils.deleteQuietly(file);
-        try {
-            write(Map.of());
-        } catch (Exception exception) {
-            LauncherLog.error("Unable to reset Microsoft sessions file.", exception);
-        }
     }
 
     public MicrosoftSession read(String accountId) {
@@ -72,17 +75,27 @@ public final class MicrosoftSessionStore {
     }
 
     public void save(MicrosoftSession session) throws AuthException {
-        Map<String, MicrosoftSession> sessions = read();
-        sessions.put(Profile.microsoftId(session.profileId()), session);
-        write(sessions);
+        try (var ignored = MicrosoftAccountLock.sessions()) {
+            Map<String, MicrosoftSession> sessions = readOrReset();
+            sessions.put(Profile.microsoftId(session.profileId()), session);
+            write(sessions);
+        }
     }
 
-    public void prune(Set<String> keep) throws AuthException {
-        Map<String, MicrosoftSession> sessions = read();
-        if (sessions.keySet().removeIf(id -> keep == null || !keep.contains(id))) write(sessions);
+    public void remove(String accountId) throws AuthException {
+        try (var ignored = MicrosoftAccountLock.sessions()) {
+            Map<String, MicrosoftSession> sessions = readOrReset();
+            if (sessions.remove(accountId) != null) write(sessions);
+        }
     }
 
-    public void write(Map<String, MicrosoftSession> sessions) throws AuthException {
+    public void initialize() throws AuthException {
+        try (var ignored = MicrosoftAccountLock.sessions()) {
+            if (!Files.exists(LauncherPaths.microsoftSessionsFile())) write(Map.of());
+        }
+    }
+
+    private void write(Map<String, MicrosoftSession> sessions) throws AuthException {
         try {
             JsonArray entries = new JsonArray();
             for (Map.Entry<String, MicrosoftSession> entry : sessions.entrySet()) {
@@ -159,7 +172,8 @@ public final class MicrosoftSessionStore {
         }
     }
 
-    private SecretKeySpec secretKey() throws AuthException {
+    private static synchronized SecretKeySpec secretKey() throws AuthException {
+        if (cachedKey != null) return cachedKey;
         try {
             String machineId = OSUtils.machineId();
             if (!AuthUtils.hasText(machineId)) throw new AuthException("Unable to resolve system machine id for Microsoft session encryption.");
@@ -170,7 +184,8 @@ public final class MicrosoftSessionStore {
             digest.update(MicrosoftAuthConfig.CLIENT_ID.getBytes(StandardCharsets.UTF_8));
             digest.update((byte) 0);
             digest.update(machineId.getBytes(StandardCharsets.UTF_8));
-            return new SecretKeySpec(digest.digest(), "AES");
+            cachedKey = new SecretKeySpec(digest.digest(), "AES");
+            return cachedKey;
         } catch (AuthException exception) {
             throw exception;
         } catch (Exception exception) {

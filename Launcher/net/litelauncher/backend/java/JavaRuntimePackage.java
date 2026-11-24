@@ -2,11 +2,7 @@ package net.litelauncher.backend.java;
 
 import java.util.Locale;
 
-record JavaRuntimePackage(int major, String name, String url, String sha1, long size) {
-
-    String runtimeId() {
-        return "jre-" + major;
-    }
+record JavaRuntimePackage(String runtimeId, String name, String url, String sha1, long size) {
 
     boolean zipArchive() {
         return name.toLowerCase(Locale.ROOT).endsWith(".zip");

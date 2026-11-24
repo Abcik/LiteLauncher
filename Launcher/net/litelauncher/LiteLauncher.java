@@ -2,6 +2,8 @@ package net.litelauncher;
 
 import net.litelauncher.backend.LauncherLog;
 import net.litelauncher.backend.LauncherState;
+import net.litelauncher.backend.SingleInstance;
+import net.litelauncher.backend.platform.LauncherPaths;
 import net.litelauncher.backend.platform.OSUtils;
 import net.litelauncher.frontend.Palette;
 import net.litelauncher.frontend.scenes.MainScene;
@@ -11,6 +13,7 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 import java.awt.Taskbar;
+import java.awt.Frame;
 import java.awt.Window;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
@@ -18,6 +21,7 @@ import java.awt.image.BufferedImage;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.InputStream;
+import java.io.IOException;
 
 public final class LiteLauncher {
 
@@ -44,6 +48,14 @@ public final class LiteLauncher {
     public static void main(String[] args) {
         OSUtils.setApplicationName(LauncherState.TITLE);
         OSUtils.disableOsScaling();
+        try {
+            SingleInstance instance = SingleInstance.open(LauncherPaths.launcherDataDirectory(), LiteLauncher::activate);
+            if (instance == null) return;
+            Runtime.getRuntime().addShutdownHook(new Thread(instance::close, "launcher-instance"));
+        } catch (IOException exception) {
+            System.err.println(exception.getMessage());
+            return;
+        }
         LauncherLog.start("Launcher started");
         LauncherStore.get();
         SwingUtilities.invokeLater(() -> {
@@ -53,6 +65,16 @@ public final class LiteLauncher {
                 LauncherLog.error("Unable to open launcher window.", exception);
                 throw exception;
             }
+        });
+    }
+
+    private static void activate() {
+        SwingUtilities.invokeLater(() -> {
+            if (window == null || closing) return;
+            window.setExtendedState(window.getExtendedState() & ~Frame.ICONIFIED);
+            window.setVisible(true);
+            window.toFront();
+            window.requestFocus();
         });
     }
 
@@ -146,6 +168,7 @@ public final class LiteLauncher {
     }
 
     public static MainScene reopen() {
+        LauncherStore.get().saveState();
         if (window != null) {
             if (window.getContentPane() instanceof MainScene mainScene) mainScene.disposeScene();
             window.setVisible(false);

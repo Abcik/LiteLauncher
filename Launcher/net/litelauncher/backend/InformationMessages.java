@@ -12,6 +12,7 @@ public final class InformationMessages {
     public static final String WEB_AUTH_ERROR = "error.webAuth";
     public static final String DOWNLOAD_ERROR = "error.download";
     public static final String JAVA_ERROR = "error.java";
+    public static final String ROSETTA_REQUIRED = "error.rosetta";
     public static final String LAUNCH_ERROR = "error.launch";
     public static final String SKIN_ERROR = "error.skin";
     public static final String CAPE_ERROR = "error.cape";

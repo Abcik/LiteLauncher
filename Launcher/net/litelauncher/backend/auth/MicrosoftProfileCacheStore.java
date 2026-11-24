@@ -13,11 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-import java.util.stream.Stream;
 
 final class MicrosoftProfileCacheStore {
 
@@ -71,27 +68,6 @@ final class MicrosoftProfileCacheStore {
         if (file != null) BackendUtils.deleteQuietly(file);
     }
 
-    void prune(Set<String> keep) {
-        try {
-            Files.createDirectories(LauncherPaths.microsoftProfileCacheDirectory());
-            Set<String> allowed = new HashSet<>();
-            if (keep != null) {
-                for (String id : keep) {
-                    String name = cacheFileName(id);
-                    if (name != null) allowed.add(name);
-                }
-            }
-            try (Stream<Path> files = Files.list(LauncherPaths.microsoftProfileCacheDirectory())) {
-                files.filter(Files::isRegularFile)
-                        .filter(file -> file.getFileName().toString().endsWith(".json"))
-                        .filter(file -> !allowed.contains(file.getFileName().toString()))
-                        .forEach(BackendUtils::deleteQuietly);
-            }
-        } catch (Exception exception) {
-            LauncherLog.error("Unable to prune Microsoft profile cache.", exception);
-        }
-    }
-
     void ensureDirectory() {
         try {
             Files.createDirectories(LauncherPaths.microsoftProfileCacheDirectory());
@@ -101,13 +77,8 @@ final class MicrosoftProfileCacheStore {
     }
 
     private Path cacheFile(String profileId) {
-        String name = cacheFileName(profileId);
-        return name == null ? null : LauncherPaths.microsoftProfileCacheDirectory().resolve(name);
-    }
-
-    private String cacheFileName(String profileId) {
         String id = normalizedProfileId(profileId);
-        return id == null ? null : id + ".json";
+        return id == null ? null : LauncherPaths.microsoftProfileCacheDirectory().resolve(id + ".json");
     }
 
     private String normalizedProfileId(String profileId) {

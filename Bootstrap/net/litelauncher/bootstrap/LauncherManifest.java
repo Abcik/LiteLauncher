@@ -1,7 +1,5 @@
 package net.litelauncher.bootstrap;
 
-import net.litelauncher.backend.platform.OSUtils;
-
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
@@ -48,7 +46,8 @@ record LauncherManifest(
         if (version.isBlank()) throw new BootstrapException("Manifest error.");
         if (file.isBlank()) throw new BootstrapException("Manifest error.");
         if (size <= 0L) throw new BootstrapException("Manifest error.");
-        if (javaMajor <= 0) javaMajor = OSUtils.currentJavaMajor();
+        // javaMajor is part of the signed payload, so it must come from the manifest as is.
+        if (javaMajor <= 0) throw new BootstrapException("Manifest error.");
 
         return new LauncherManifest(version, file, algorithm, checksum, size, javaMajor, signature);
     }

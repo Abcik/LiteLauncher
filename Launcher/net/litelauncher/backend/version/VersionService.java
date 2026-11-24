@@ -47,10 +47,8 @@ public final class VersionService {
 
         try {
             JsonObject remoteManifest = readRemoteManifest();
-            if (cachedManifest == null || latestChanged(cachedManifest, remoteManifest)) {
-                writeCachedManifest(remoteManifest);
-                activeManifest = remoteManifest;
-            }
+            activeManifest = remoteManifest;
+            writeCachedManifest(remoteManifest);
         } catch (Exception exception) {
             LauncherLog.error("Unable to update version manifest.", exception);
         }
@@ -318,20 +316,6 @@ public final class VersionService {
         } catch (Exception exception) {
             LauncherLog.error("Unable to write cached version manifest.", exception);
         }
-    }
-
-    private boolean latestChanged(JsonObject cachedManifest, JsonObject remoteManifest) {
-        if (cachedManifest == null || remoteManifest == null) return true;
-        return !latestValue(cachedManifest, "release").equals(latestValue(remoteManifest, "release"))
-                || !latestValue(cachedManifest, "snapshot").equals(latestValue(remoteManifest, "snapshot"));
-    }
-
-    private String latestValue(JsonObject manifest, String key) {
-        if (manifest == null || key == null) return "";
-
-        Object latest = manifest.get("latest");
-        if (!(latest instanceof JsonObject json)) return "";
-        return json.getString(key, "");
     }
 
     private List<Version> mergeManifest(JsonObject manifest, Map<String, LocalVersion> localVersions) {

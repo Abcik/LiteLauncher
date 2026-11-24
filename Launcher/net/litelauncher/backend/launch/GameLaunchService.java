@@ -1,6 +1,7 @@
 package net.litelauncher.backend.launch;
 
 import net.litelauncher.backend.platform.LauncherPaths;
+import net.litelauncher.backend.platform.OSUtils;
 import com.grack.nanojson.JsonObject;
 import com.grack.nanojson.JsonParser;
 import net.litelauncher.backend.BackendUtils;
@@ -63,7 +64,7 @@ public final class GameLaunchService {
         this.javaRuntime = new JavaRuntimeService(downloads);
     }
 
-    public LaunchResult launch(Profile profile, Version version, LaunchSettings settings, LaunchProgress progress, Consumer<Process> onProcessStarted, CancellationToken cancellation) throws GameLaunchException, AuthException {
+    public LaunchResult launch(Profile profile, Version version, LaunchSettings settings, LaunchProgress progress, Consumer<ProcessHandle> onProcessStarted, CancellationToken cancellation) throws GameLaunchException, AuthException {
         checkCancelled(cancellation);
         LauncherLog.info("Launch started");
         LauncherLog.info("Selected profile: " + (profile == null ? "null" : profile.username() + " / " + profile.id() + " / microsoft=" + profile.microsoft()));
@@ -73,9 +74,14 @@ public final class GameLaunchService {
 
         checkCancelled(cancellation);
         progress.update(0.01, I18n.text(settings.language(), "progress.preparingLaunch"), "account");
-        LaunchAccount account = authService.prepareLaunchAccount(profile);
-        LauncherLog.info("Launch account prepared: username=" + account.username() + ", uuid=" + account.uuid() + ", userType=" + account.userType());
+        try (var accountPreparation = authService.prepareLaunchAccount(profile)) {
+            return launchPrepared(profile, version, settings, progress, onProcessStarted, cancellation, accountPreparation);
+        }
+    }
 
+    private LaunchResult launchPrepared(Profile profile, Version version, LaunchSettings settings, LaunchProgress progress,
+                                       Consumer<ProcessHandle> onProcessStarted, CancellationToken cancellation,
+                                       AuthService.LaunchPreparation accountPreparation) throws GameLaunchException {
         LaunchEnvironment environment;
         double assetCheckProgress;
         double planningProgress;
@@ -148,6 +154,9 @@ public final class GameLaunchService {
             throw new GameLaunchException("Version has no mainClass: " + resolved.id());
         LauncherLog.info("Version resolved: id=" + resolved.id() + ", jar=" + resolved.jarId() + ", clientDownload=" + resolved.clientDownloadId() + ", java=" + resolved.javaMajor() + ", libraries=" + resolved.libraries().size());
 
+        // Decided early: on ARM without native support this fails fast (e.g. no Rosetta) before downloads.
+        String javaArch = javaArchitecture(resolved);
+
         ClientJarPlan clientJar = planClientJar(resolved);
         boolean shouldPatch = clientPatcher.needsPatch(resolved);
         ElyByAuthlibPlan elyByAuthlib = shouldUseElyBy(profile)
@@ -188,6 +197,9 @@ public final class GameLaunchService {
         checkCancelled(cancellation);
         progress.update(0.84, I18n.text(settings.language(), "progress.preparingLaunch"), "assets");
         mapLegacyAssets(assetIndex, environment.gameDirectory(), cancellation);
+        if (!OSUtils.os().windows() && !OSUtils.os().macos()) {
+            LinuxGameWindow.ensureDesktopEntry(assetIndex, LauncherPaths.assetObjectsDirectory());
+        }
 
         elyByAuthlib = prepareElyByAuthlib(elyByAuthlib, progress, cancellation);
 
@@ -204,20 +216,26 @@ public final class GameLaunchService {
         LauncherLog.info("Natives ready at: " + natives);
 
         checkCancelled(cancellation);
-        Path java = javaRuntime.ensureJava(resolved.javaMajor(), scaledLaunch(progress, 0.91, 0.98), cancellation);
+        Path java = javaRuntime.ensureJava(resolved.javaMajor(), javaArch, scaledLaunch(progress, 0.91, 0.98), cancellation);
         LauncherLog.info("Java executable: " + java);
 
         checkCancelled(cancellation);
         progress.update(0.98, I18n.text(settings.language(), "progress.preparingLaunch"), "command");
         legacyOptions.fixIfNeeded(resolved, environment.gameDirectory());
         LaunchClasspath classpath = artifacts.classpath(resolved, clientJar, elyByAuthlib);
+        LaunchAccount account = accountPreparation.account();
+        checkCancelled(cancellation);
+        LauncherLog.info("Launch account prepared: username=" + account.username() + ", uuid=" + account.uuid() + ", userType=" + account.userType());
         List<String> command = arguments.build(java, resolved, assetIndex, account, settings, environment.gameDirectory(),
                 natives, classpath, elyByAuthlib.active());
         LauncherLog.info("Command prepared: args=" + command.size() + ", libraries=" + classpath.libraryCount() + ", client=" + clientJar.runtimeFileName() + ", elyBy=" + elyByAuthlib.active() + ", classpathLength=" + classpath.length());
 
         checkCancelled(cancellation);
         progress.update(0.99, I18n.text(settings.language(), "progress.startingGame"), resolved.id());
-        startMinecraft(command, resolved.id(), environment.gameDirectory(), onProcessStarted, cancellation);
+        startMinecraft(command, resolved.id(), environment.gameDirectory(), process -> {
+            accountPreparation.gameStarted(process);
+            if (onProcessStarted != null) onProcessStarted.accept(process);
+        }, cancellation);
         progress.update(1.0, I18n.text(settings.language(), "progress.gameStarted"), resolved.id());
         LauncherLog.info("Process started.");
         return new LaunchResult(account.updatedProfile());
@@ -248,22 +266,87 @@ public final class GameLaunchService {
         return profile != null && !profile.microsoft() && profile.elyBy();
     }
 
-    private void startMinecraft(List<String> command, String versionId, Path gameDirectory, Consumer<Process> onProcessStarted, CancellationToken cancellation) throws GameLaunchException {
+    private void startMinecraft(List<String> command, String versionId, Path gameDirectory, Consumer<ProcessHandle> onProcessStarted, CancellationToken cancellation) throws GameLaunchException {
         try {
             checkCancelled(cancellation);
-            Process process = new ProcessBuilder(command)
+            ProcessBuilder builder = new ProcessBuilder(command)
                     .directory(gameDirectory.toFile())
                     .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start();
-            LauncherLog.info("Minecraft process started for " + versionId);
-            if (onProcessStarted != null) onProcessStarted.accept(process);
+                    .redirectError(ProcessBuilder.Redirect.INHERIT);
+            if (!OSUtils.os().windows() && !OSUtils.os().macos()) {
+                preferX11(builder);
+                builder.command(LinuxGameWindow.withWindowClass(builder.command(), builder.environment()));
+            }
+            if (OSUtils.os().macos() && !Boolean.getBoolean("litelauncher.macapp.disable")) {
+                ProcessHandle game = MacAppProcessBridge.start(builder, versionId, cancellation);
+                if (onProcessStarted != null) onProcessStarted.accept(game);
+                return;
+            }
+            Process process = builder.start();
+            LauncherLog.info("Minecraft process started for " + versionId + "; pid=" + process.pid());
+            if (onProcessStarted != null) onProcessStarted.accept(process.toHandle());
             watchMinecraft(process, versionId);
         } catch (CancellationException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new GameLaunchException("Unable to start Minecraft.", exception);
         }
+    }
+
+    /**
+     * On ARM Macs and ARM Windows, versions before 1.19 have only x86_64 natives (and Java 8 has
+     * no ARM build at Adoptium). Such versions run on x64 Java under emulation: Rosetta 2 on
+     * macOS, built-in x64 emulation on Windows 11. Everything else keeps the native architecture.
+     */
+    private String javaArchitecture(ResolvedVersion resolved) throws GameLaunchException {
+        String host = JavaRuntimeService.hostArchitecture();
+        boolean armDesktop = "aarch64".equals(host) && (OSUtils.os().macos() || OSUtils.os().windows());
+        if (!armDesktop) return host;
+
+        boolean armNatives = artifacts.hasArmNatives(resolved);
+        if (armNatives && javaRuntime.available(resolved.javaMajor(), "aarch64")) return host;
+
+        LauncherLog.info("No native ARM support for " + resolved.id() + " (ARM natives=" + armNatives
+                + "); using x64 Java under emulation.");
+        if (OSUtils.os().macos()) requireRosetta();
+        return "x64";
+    }
+
+    private void requireRosetta() throws GameLaunchException {
+        try {
+            Process process = new ProcessBuilder("/usr/bin/arch", "-x86_64", "/usr/bin/true")
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            if (process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) return;
+            process.destroyForcibly();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Launch cancelled.");
+        } catch (Exception exception) {
+            LauncherLog.error("Unable to check Rosetta 2.", exception);
+        }
+        throw new GameLaunchException("Rosetta 2 is required to run this Minecraft version on Apple Silicon. "
+                + "Install it with: softwareupdate --install-rosetta", InformationMessages.ROSETTA_REQUIRED);
+    }
+
+    /**
+     * Newer Minecraft opens a native Wayland window when it can. On GNOME such a window has no
+     * title bar and no icon; through XWayland it gets both. So whenever an X server is available:
+     * - GLFW versions (up to 1.21.x): hide WAYLAND_DISPLAY;
+     * - SDL3 versions (26.x): that is not enough, SDL falls back to the default "wayland-0"
+     *   socket by itself, so the video driver is chosen explicitly.
+     */
+    private void preferX11(ProcessBuilder builder) {
+        Map<String, String> environment = builder.environment();
+        String display = environment.get("DISPLAY");
+        boolean wayland = environment.containsKey("WAYLAND_DISPLAY")
+                || "wayland".equalsIgnoreCase(environment.getOrDefault("XDG_SESSION_TYPE", ""));
+        if (display == null || display.isBlank() || !wayland) return;
+        environment.remove("WAYLAND_DISPLAY");
+        environment.put("SDL_VIDEO_DRIVER", "x11"); // SDL3
+        environment.put("SDL_VIDEODRIVER", "x11");  // SDL2 name, for mods that bundle it
+        LauncherLog.info("Wayland session detected; Minecraft will use X11 display " + display + ".");
     }
 
     private void watchMinecraft(Process process, String versionId) {

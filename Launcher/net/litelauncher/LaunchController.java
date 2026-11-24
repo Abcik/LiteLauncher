@@ -55,7 +55,7 @@ final class LaunchController {
     boolean controlLocked() { return System.currentTimeMillis() < controlLockedUntil; }
 
     void launch(Consumer<String> onError) {
-        if (busy || controlLocked()) return;
+        if (busy || versions.busy() || controlLocked()) return;
 
         lockControl();
         busy = true;
@@ -69,20 +69,19 @@ final class LaunchController {
         LaunchSettings settings = snapshot();
         launchThread = Thread.ofVirtual().name("game-launch").start(() -> {
             try {
-                profiles.refreshOfflineSkinBeforeLaunch(profile);
                 LaunchResult result = services.gameLaunchService().launch(profile, version, settings,
                         (value, action, details) -> setProgress(current, value, action, details),
-                        process -> addRunningGame(process, version, current), current);
+                        process -> addRunningGame(process, version), current);
                 SwingUtilities.invokeLater(() -> complete(result, settings.closeAfterLaunch(), current));
             } catch (CancellationException _) {
                 LauncherLog.info("Launch cancelled.");
                 SwingUtilities.invokeLater(() -> cancelCompleted(current));
             } catch (AuthException exception) {
                 LauncherLog.error("Launch failed.", exception);
-                SwingUtilities.invokeLater(() -> fail(profile, exception, onError, current));
+                SwingUtilities.invokeLater(() -> fail(exception, onError, current));
             } catch (Exception exception) {
                 LauncherLog.error("Launch failed.", exception);
-                SwingUtilities.invokeLater(() -> fail(null, exception, onError, current));
+                SwingUtilities.invokeLater(() -> fail(exception, onError, current));
             }
         });
     }
@@ -96,7 +95,6 @@ final class LaunchController {
         Thread thread = launchThread;
         if (current != null) current.cancel();
         if (thread != null) thread.interrupt();
-        clear(current);
     }
 
     void refreshPresence() {
@@ -106,13 +104,20 @@ final class LaunchController {
     void shutdown() {
         if (cancellation != null) cancellation.cancel();
         if (launchThread != null) launchThread.interrupt();
+        if (launchThread != null) {
+            boolean interrupted = false;
+            while (launchThread.isAlive()) {
+                try { launchThread.join(); }
+                catch (InterruptedException ignored) { interrupted = true; }
+            }
+            if (interrupted) Thread.currentThread().interrupt();
+        }
         services.discordRpcService().shutdown();
     }
 
-    private void addRunningGame(Process process, Version version, CancellationToken current) {
+    private void addRunningGame(ProcessHandle process, Version version) {
         services.discordRpcService().showGame(process, version);
         SwingUtilities.invokeLater(() -> {
-            clear(current);
             runningGames++;
             store.emit(LauncherStore.Event.GAME_STATUS_CHANGED);
         });
@@ -138,12 +143,14 @@ final class LaunchController {
     }
 
     private void complete(LaunchResult result, boolean closeAfterLaunch, CancellationToken current) {
+        if (current != cancellation) return;
+        clear(current);
+        if (current.cancelled()) return;
         if (result != null && result.updatedProfile() != null) profiles.applyUpdate(result.updatedProfile());
         if (closeAfterLaunch) closeLauncherWindow();
-        else clear(current);
     }
 
-    private void fail(Profile profile, Exception exception, Consumer<String> onError, CancellationToken current) {
+    private void fail(Exception exception, Consumer<String> onError, CancellationToken current) {
         if (current != null && current.cancelled()) {
             clear(current);
             return;
@@ -151,9 +158,6 @@ final class LaunchController {
         if (current != cancellation) return;
 
         clear(current);
-        if (exception instanceof AuthException authException && authException.expiredSession()) {
-            profiles.removeExpiredMicrosoftProfile(profile);
-        }
         if (onError != null) onError.accept(InformationMessages.launch(exception));
     }
 

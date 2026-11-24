@@ -6,17 +6,14 @@ import javax.net.ssl.SSLException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.net.ConnectException;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -40,11 +37,10 @@ public final class DownloadService {
     private static final int DOWNLOAD_ATTEMPTS = 3;
     private static final int BUFFER_SIZE = 64 * 1024;
 
+    private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
+    private static final int READ_TIMEOUT_MILLIS = 15_000;
+
     private final BootstrapLog log;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(20))
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .build();
 
     public DownloadService(BootstrapLog log) {
         this.log = log;
@@ -209,22 +205,25 @@ public final class DownloadService {
     private void downloadSingle(DownloadFile file, Path temp, AtomicLong totalBytes, AtomicLong downloadedBytes,
                                 AtomicLong completedFiles, long fileCount, AtomicLong lastReport, DownloadProgress progress,
                                 AtomicBoolean cancelled, AtomicLong attemptBytes, AtomicBoolean contentLengthAdded) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(file.url()))
-                .timeout(Duration.ofMinutes(3))
-                .header("User-Agent", "LiteLauncher/" + System.getProperty("java.version", "java"))
-                .GET()
-                .build();
-        HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        info("HTTP " + response.statusCode() + ": " + file.url() + " -> " + response.uri());
-        if (response.statusCode() < 200 || response.statusCode() >= 300)
-            throw new DownloadException("Unable to download files.", new java.io.IOException("HTTP " + response.statusCode() + " for " + response.uri()));
+        // Read timeout is per read: a slow but alive connection is fine, a stalled one fails fast.
+        HttpURLConnection connection = (HttpURLConnection) URI.create(file.url()).toURL().openConnection();
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+        connection.setReadTimeout(READ_TIMEOUT_MILLIS);
+        connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("User-Agent", "LiteLauncher/" + System.getProperty("java.version", "java"));
+        int status = connection.getResponseCode();
+        info("HTTP " + status + ": " + file.url() + " -> " + connection.getURL());
+        if (status < 200 || status >= 300) {
+            connection.disconnect();
+            throw new DownloadException("Unable to download files.", new java.io.IOException("HTTP " + status + " for " + connection.getURL()));
+        }
 
         if (file.size() <= 0 && contentLengthAdded.compareAndSet(false, true)) {
-            long length = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
+            long length = connection.getContentLengthLong();
             if (length > 0) totalBytes.addAndGet(length);
         }
 
-        try (InputStream input = response.body(); var output = Files.newOutputStream(temp)) {
+        try (InputStream input = connection.getInputStream(); var output = Files.newOutputStream(temp)) {
             byte[] buffer = new byte[BUFFER_SIZE];
             int read;
             while ((read = input.read(buffer)) >= 0) {

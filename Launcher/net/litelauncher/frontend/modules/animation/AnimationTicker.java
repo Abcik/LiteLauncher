@@ -1,13 +1,20 @@
 package net.litelauncher.frontend.modules.animation;
 
 import javax.swing.Timer;
+import java.awt.Frame;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class AnimationTicker {
 
+    /*
+     * ~30 FPS. Every tick repaints the whole pixel canvas, so this is the main idle CPU cost.
+     * Scrolling text moves 1px per 40ms and the skin turns slowly: 60 FPS gave nothing visible.
+     */
+    private static final int FRAME_MS = 33;
+
     private static final List<Animated> ITEMS = new ArrayList<>();
-    private static final Timer TIMER = new Timer(16, _ -> tick());
+    private static final Timer TIMER = new Timer(FRAME_MS, _ -> tick());
     private static long lastTime;
 
     public static void register(Animated item) {
@@ -36,6 +43,7 @@ public final class AnimationTicker {
         long now = System.currentTimeMillis();
         long delta = now - lastTime;
         lastTime = now;
+        if (hidden()) return;
 
         boolean active = false;
         for (Animated item : ITEMS) {
@@ -45,5 +53,16 @@ public final class AnimationTicker {
         }
 
         if (!active) TIMER.stop();
+    }
+
+    /** Nothing to animate while the launcher is minimized or hidden (e.g. while the game runs). */
+    private static boolean hidden() {
+        for (Frame frame : Frame.getFrames()) {
+            if (frame.isShowing() && (frame.getExtendedState() & Frame.ICONIFIED) == 0) return false;
+        }
+        return true;
+    }
+
+    private AnimationTicker() {
     }
 }

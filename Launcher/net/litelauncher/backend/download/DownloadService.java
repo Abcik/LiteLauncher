@@ -20,13 +20,13 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +36,15 @@ public final class DownloadService {
 
     private static final String TEMP_SUFFIX = ".litelauncher-download";
     private static final int DOWNLOAD_ATTEMPTS = 3;
+    /* Time to get response headers. */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    /* A body that sends no bytes for this long is dropped and retried; a slow but alive one is kept. */
+    private static final long STALL_TIMEOUT_NANOS = Duration.ofSeconds(15).toNanos();
+    private static final long STALL_CHECK_MS = 2_000;
+    private static final ScheduledThreadPoolExecutor TIMEOUTS = new ScheduledThreadPoolExecutor(1,
+            runnable -> Thread.ofPlatform().daemon().name("download-timeouts").unstarted(runnable));
+
+    static { TIMEOUTS.setRemoveOnCancelPolicy(true); }
 
     private final HttpClient http = BackendUtils.http();
 
@@ -44,57 +53,52 @@ public final class DownloadService {
         List<DownloadFile> plan = unique(files);
         if (plan.isEmpty()) return;
 
-        cleanupDownloadTemps(plan);
-        try {
-            FileCheck check = checkFiles(plan, progress, cancellation);
-            List<DownloadFile> missing = check.missing();
-            long total = check.totalBytes();
-            long done = check.doneBytes();
+        FileCheck check = checkFiles(plan, progress, cancellation);
+        List<DownloadFile> missing = check.missing();
+        long total = check.totalBytes();
+        long done = check.doneBytes();
 
-            LauncherLog.info("Download check: total=" + plan.size()
-                    + ", valid=" + check.presentFiles()
-                    + ", missing=" + missing.size());
-            report(progress, total, done, check.presentFiles(), plan.size(), I18n.text("progress.checkingFiles"));
-            if (missing.isEmpty()) return;
+        LauncherLog.info("Download check: total=" + plan.size()
+                + ", valid=" + check.presentFiles()
+                + ", missing=" + missing.size());
+        report(progress, total, done, check.presentFiles(), plan.size(), I18n.text("progress.checkingFiles"));
+        if (missing.isEmpty()) return;
 
-            int workerCount = Math.min(downloadThreads(), missing.size());
-            LauncherLog.info("Starting download workers: threads=" + workerCount + ", files=" + missing.size());
+        int workerCount = Math.min(downloadThreads(), missing.size());
+        LauncherLog.info("Starting download workers: threads=" + workerCount + ", files=" + missing.size());
 
-            AtomicLong totalBytes = new AtomicLong(Math.max(total, done));
-            AtomicLong downloadedBytes = new AtomicLong(done);
-            AtomicLong completedFiles = new AtomicLong(check.presentFiles());
-            AtomicLong lastReport = new AtomicLong();
-            AtomicBoolean cancelled = new AtomicBoolean();
-            AtomicInteger nextFile = new AtomicInteger();
-            AtomicReference<Throwable> failure = new AtomicReference<>();
-            List<Thread> workers = new ArrayList<>(workerCount);
-            for (int index = 0; index < workerCount; index++) {
-                workers.add(Thread.ofVirtual().name("download-worker-" + (index + 1)).unstarted(() -> {
-                    while (!cancelled.get()) {
-                        int fileIndex = nextFile.getAndIncrement();
-                        if (fileIndex >= missing.size()) return;
-                        try {
-                            downloadOne(missing.get(fileIndex), totalBytes, downloadedBytes, completedFiles, plan.size(),
-                                    lastReport, progress, cancelled, cancellation);
-                        } catch (Throwable throwable) {
-                            failure.compareAndSet(null, throwable);
-                            cancelled.set(true);
-                            interruptOthers(workers);
-                            return;
-                        }
+        AtomicLong totalBytes = new AtomicLong(Math.max(total, done));
+        AtomicLong downloadedBytes = new AtomicLong(done);
+        AtomicLong completedFiles = new AtomicLong(check.presentFiles());
+        AtomicLong lastReport = new AtomicLong();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicInteger nextFile = new AtomicInteger();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        List<Thread> workers = new ArrayList<>(workerCount);
+        for (int index = 0; index < workerCount; index++) {
+            workers.add(Thread.ofVirtual().name("download-worker-" + (index + 1)).unstarted(() -> {
+                while (!cancelled.get()) {
+                    int fileIndex = nextFile.getAndIncrement();
+                    if (fileIndex >= missing.size()) return;
+                    try {
+                        downloadOne(missing.get(fileIndex), totalBytes, downloadedBytes, completedFiles, plan.size(),
+                                lastReport, progress, cancelled, cancellation);
+                    } catch (Throwable throwable) {
+                        failure.compareAndSet(null, throwable);
+                        cancelled.set(true);
+                        interruptOthers(workers);
+                        return;
                     }
-                }));
-            }
-            workers.forEach(Thread::start);
-            joinWorkers(workers, cancelled, cancellation);
-
-            Throwable cause = failure.get();
-            if (cause instanceof CancellationException cancellationException) throw cancellationException;
-            if (cause instanceof DownloadException downloadException) throw downloadException;
-            if (cause != null) throw downloadException(cause);
-        } finally {
-            cleanupDownloadTemps(plan);
+                }
+            }));
         }
+        workers.forEach(Thread::start);
+        joinWorkers(workers, cancelled, cancellation);
+
+        Throwable cause = failure.get();
+        if (cause instanceof CancellationException cancellationException) throw cancellationException;
+        if (cause instanceof DownloadException downloadException) throw downloadException;
+        if (cause != null) throw downloadException(cause);
     }
 
     public boolean isPresent(DownloadFile file, CancellationToken cancellation) {
@@ -157,11 +161,9 @@ public final class DownloadService {
                 AtomicLong attemptBytes = new AtomicLong();
                 try {
                     Files.deleteIfExists(temp);
-                    LauncherLog.info("Downloading attempt " + attempt + "/" + DOWNLOAD_ATTEMPTS + ": " + fileName(file) + " <- " + file.url());
                     downloadSingle(file, temp, totalBytes, downloadedBytes, completedFiles, fileCount, lastReport, progress, cancelled, cancellation, attemptBytes, contentLengthAdded);
                     completedFiles.incrementAndGet();
                     report(progress, totalBytes.get(), downloadedBytes.get(), completedFiles.get(), fileCount, label(file));
-                    LauncherLog.info("Downloaded: " + fileName(file) + " -> " + file.path());
                     return;
                 } catch (CancellationException exception) {
                     rollbackAttemptBytes(downloadedBytes, attemptBytes);
@@ -205,32 +207,47 @@ public final class DownloadService {
                                 AtomicBoolean cancelled, CancellationToken cancellation, AtomicLong attemptBytes, AtomicBoolean contentLengthAdded) throws Exception {
         checkCancelled(cancellation);
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(file.url()))
-                .timeout(Duration.ofMinutes(3));
+                .timeout(REQUEST_TIMEOUT);
         if (!hasHeader(file.headers(), "User-Agent"))
             requestBuilder.header("User-Agent", "LiteLauncher/" + System.getProperty("java.version", "java"));
         file.headers().forEach(requestBuilder::header);
         HttpRequest request = requestBuilder.GET().build();
         HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        LauncherLog.info("HTTP " + response.statusCode() + ": " + file.url() + " -> " + response.uri());
-        if (response.statusCode() < 200 || response.statusCode() >= 300)
-            throw new DownloadException("Unable to download files.", new java.io.IOException("HTTP " + response.statusCode() + " for " + response.uri()));
+        try (InputStream input = response.body()) {
+            if (response.statusCode() < 200 || response.statusCode() >= 300)
+                throw new DownloadException("Unable to download files.", new java.io.IOException("HTTP " + response.statusCode() + " for " + response.uri()));
 
-        if (file.size() <= 0 && contentLengthAdded.compareAndSet(false, true)) {
-            long length = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
-            if (length > 0) totalBytes.addAndGet(length);
-        }
-
-        try (InputStream input = response.body(); var output = Files.newOutputStream(temp)) {
-            byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                checkCancelled(cancellation);
-                if (cancelled.get()) throw new DownloadException("Unable to download files.");
-                if (read == 0) continue;
-                output.write(buffer, 0, read);
-                attemptBytes.addAndGet(read);
-                reportThrottled(progress, totalBytes.get(), downloadedBytes.addAndGet(read), completedFiles.get(), fileCount, label(file), lastReport);
+            if (file.size() <= 0 && contentLengthAdded.compareAndSet(false, true)) {
+                long length = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
+                if (length > 0) totalBytes.addAndGet(length);
             }
+
+            AtomicBoolean timedOut = new AtomicBoolean();
+            AtomicLong lastData = new AtomicLong(System.nanoTime());
+            var timeout = TIMEOUTS.scheduleWithFixedDelay(() -> {
+                if (System.nanoTime() - lastData.get() < STALL_TIMEOUT_NANOS) return;
+                timedOut.set(true);
+                try { input.close(); } catch (Exception ignored) { }
+            }, STALL_CHECK_MS, STALL_CHECK_MS, TimeUnit.MILLISECONDS);
+            try (var output = Files.newOutputStream(temp)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    checkCancelled(cancellation);
+                    if (cancelled.get()) throw new DownloadException("Unable to download files.");
+                    if (read == 0) continue;
+                    lastData.set(System.nanoTime());
+                    output.write(buffer, 0, read);
+                    attemptBytes.addAndGet(read);
+                    reportThrottled(progress, totalBytes.get(), downloadedBytes.addAndGet(read), completedFiles.get(), fileCount, label(file), lastReport);
+                }
+            } catch (java.io.IOException exception) {
+                if (timedOut.get()) throw new HttpTimeoutException("Download stalled: no data received.");
+                throw exception;
+            } finally {
+                timeout.cancel(false);
+            }
+            if (timedOut.get()) throw new HttpTimeoutException("Download stalled: no data received.");
         }
 
         verifyDownloaded(file, temp, cancellation);
@@ -278,32 +295,6 @@ public final class DownloadService {
         if (cores <= 2) return 4;
         if (cores <= 4) return 8;
         return 16;
-    }
-
-    private void cleanupDownloadTemps(List<DownloadFile> files) {
-        Map<Path, Set<String>> targetsByDirectory = new LinkedHashMap<>();
-        for (DownloadFile file : files) {
-            if (file == null || file.path() == null || file.path().getParent() == null || file.path().getFileName() == null) continue;
-            targetsByDirectory.computeIfAbsent(file.path().getParent(), _ -> new HashSet<>())
-                    .add(file.path().getFileName().toString());
-        }
-
-        for (Map.Entry<Path, Set<String>> entry : targetsByDirectory.entrySet()) {
-            Path directory = entry.getKey();
-            if (!Files.isDirectory(directory)) continue;
-            Set<String> targets = entry.getValue();
-            try (var stream = Files.list(directory)) {
-                stream.filter(path -> {
-                    String name = path.getFileName() == null ? "" : path.getFileName().toString();
-                    for (String target : targets) {
-                        if (name.equals(target + TEMP_SUFFIX) || name.equals(target + ".download")) return true;
-                    }
-                    return false;
-                }).forEach(BackendUtils::deleteQuietly);
-            } catch (Exception _) {
-            }
-        }
-        LauncherLog.info("Download temp cleanup completed: directories=" + targetsByDirectory.size());
     }
 
     private Path tempPath(Path target) {

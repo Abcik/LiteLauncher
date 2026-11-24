@@ -59,7 +59,6 @@ public final class LauncherStore {
         versions = new VersionController(this, state, services);
         launch = new LaunchController(this, state, services, profiles, versions);
 
-        state.save();
         versions.start();
         profiles.start();
     }
@@ -125,7 +124,8 @@ public final class LauncherStore {
     public void cancelLaunch() { launch.cancel(); }
     public boolean launchControlLocked() { return launch.controlLocked(); }
     public void refreshLauncherPresence() { launch.refreshPresence(); }
-    public void shutdownBeforeExit() { launch.shutdown(); }
+    public void saveState() { state.normalize(); state.save(); }
+    public void shutdownBeforeExit() { saveState(); launch.shutdown(); }
 
     public Language language() {
         return state.language;
@@ -257,6 +257,7 @@ public final class LauncherStore {
     public void setInstancesStorageSystem(boolean instancesStorageSystem) {
         if (runOnEdt(() -> setInstancesStorageSystem(instancesStorageSystem))) return;
         if (state.instancesStorageSystem == instancesStorageSystem) return;
+        if (launch.busy() || versions.busy()) { emit(Event.SETTINGS_CHANGED); return; }
         state.instancesStorageSystem = instancesStorageSystem;
         saveStateAndEmit(Event.SETTINGS_CHANGED);
     }
@@ -270,7 +271,6 @@ public final class LauncherStore {
         if (state.customThemes == customThemes) return;
         state.customThemes = customThemes;
         Palette.setCustomThemesEnabled(customThemes);
-        state.save();
         emit(Event.SETTINGS_CHANGED);
         emit(Event.THEME_COLORS_CHANGED);
     }
@@ -298,7 +298,7 @@ public final class LauncherStore {
 
     void saveStateAndEmit(Event event) {
         state.normalize();
-        state.save();
+        if (event != Event.SETTINGS_CHANGED) state.save();
         emit(event);
     }
 

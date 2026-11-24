@@ -24,18 +24,37 @@ final class JavaRuntimeManifestService {
         return major == 16 ? 17 : major;
     }
 
-    String runtimeId(int major) {
-        return "jre-" + normalizeMajor(major);
+    /** Native runtimes keep their old folder names; an emulated one gets its own folder (jre-8-x64). */
+    String runtimeId(int major, String arch) {
+        String id = "jre-" + normalizeMajor(major);
+        return arch.equals(hostArchitecture()) ? id : id + "-" + arch;
     }
 
-    JavaRuntimePackage resolve(int requestedMajor) throws IOException {
-        return parse(requestedMajor, loadManifest());
+    JavaRuntimePackage resolve(int requestedMajor, String arch) throws IOException {
+        return parse(requestedMajor, arch, loadManifest());
     }
 
-    private JavaRuntimePackage parse(int requestedMajor, String manifest) throws IOException {
+    boolean available(int requestedMajor, String arch) throws IOException {
+        try {
+            parse(requestedMajor, arch, loadManifest());
+            return true;
+        } catch (UnavailableRuntimeException exception) {
+            return false;
+        }
+    }
+
+    /** "aarch64", "x64", or "" for anything else. */
+    static String hostArchitecture() {
+        String value = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        if (value.contains("aarch64") || value.contains("arm64")) return "aarch64";
+        if (value.contains("amd64") || value.contains("x86_64") || value.equals("x64")) return "x64";
+        return "";
+    }
+
+    private JavaRuntimePackage parse(int requestedMajor, String arch, String manifest) throws IOException {
         int major = normalizeMajor(requestedMajor);
         String os = operatingSystem();
-        String arch = architecture();
+        if (blank(arch)) throw new IOException("Unsupported architecture for Java runtime: " + System.getProperty("os.arch", "") + ".");
 
         JsonObject root;
         try {
@@ -50,7 +69,7 @@ final class JavaRuntimeManifestService {
                 .getObject(Integer.toString(major), new JsonObject())
                 .getObject(os, new JsonObject())
                 .getObject(arch);
-        if (runtime == null) throw new IOException("Java " + major + " is unavailable for " + os + "/" + arch + ".");
+        if (runtime == null) throw new UnavailableRuntimeException("Java " + major + " is unavailable for " + os + "/" + arch + ".");
 
         String name = requiredText(runtime, "name");
         String url = requiredText(runtime, "url");
@@ -66,7 +85,7 @@ final class JavaRuntimeManifestService {
             throw new IOException("Invalid Java package SHA-1 in manifest.");
         if (size <= 0L) throw new IOException("Invalid Java package size in manifest.");
 
-        return new JavaRuntimePackage(major, name, url, sha1, size);
+        return new JavaRuntimePackage(runtimeId(major, arch), name, url, sha1, size);
     }
 
     private String loadManifest() throws IOException {
@@ -99,11 +118,10 @@ final class JavaRuntimeManifestService {
         throw new IOException("Unsupported operating system for Java runtime.");
     }
 
-    private String architecture() throws IOException {
-        String value = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
-        if (value.contains("aarch64") || value.contains("arm64")) return "aarch64";
-        if (value.contains("amd64") || value.contains("x86_64") || value.equals("x64")) return "x64";
-        throw new IOException("Unsupported architecture for Java runtime: " + value + ".");
+    private static final class UnavailableRuntimeException extends IOException {
+        private UnavailableRuntimeException(String message) {
+            super(message);
+        }
     }
 
     private static String requiredText(JsonObject json, String key) throws IOException {

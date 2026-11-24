@@ -253,41 +253,56 @@ final class GameArgumentBuilder {
         if (text == null || text.isBlank()) return parts;
 
         StringBuilder current = new StringBuilder();
-        boolean quote = false;
         char quoteChar = 0;
-        boolean escape = false;
+        boolean started = false;
 
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (escape) {
-                current.append(c);
-                escape = false;
-                continue;
-            }
             if (c == '\\') {
-                escape = true;
-                continue;
+                int start = i;
+                while (i < text.length() && text.charAt(i) == '\\') i++;
+                int count = i - start;
+                started = true;
+                if (quoteChar == 0 && count % 2 != 0 && i < text.length()
+                        && (Character.isWhitespace(text.charAt(i)) || text.charAt(i) == '\'')) {
+                    current.append("\\".repeat(count - 1)).append(text.charAt(i));
+                    continue;
+                }
+                if (i < text.length() && text.charAt(i) == '"' && quoteChar != '\'') {
+                    current.append("\\".repeat(count / 2));
+                    if (count % 2 != 0) {
+                        current.append('"');
+                        continue;
+                    }
+                    c = '"';
+                } else {
+                    current.append("\\".repeat(count));
+                    i--;
+                    continue;
+                }
             }
-            if (quote) {
-                if (c == quoteChar) quote = false;
+            if (quoteChar != 0) {
+                if (c == quoteChar) quoteChar = 0;
                 else current.append(c);
                 continue;
             }
             if (c == '\'' || c == '"') {
-                quote = true;
+                started = true;
                 quoteChar = c;
                 continue;
             }
             if (Character.isWhitespace(c)) {
-                if (!current.isEmpty()) {
+                if (started) {
                     parts.add(current.toString());
                     current.setLength(0);
+                    started = false;
                 }
                 continue;
             }
             current.append(c);
+            started = true;
         }
-        if (!current.isEmpty()) parts.add(current.toString());
+        if (started) parts.add(current.toString());
         return parts;
     }
 }

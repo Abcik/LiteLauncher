@@ -32,15 +32,34 @@ public final class JavaRuntimeService {
         this.downloads = downloads;
     }
 
-    public Path ensureJava(int majorVersion, LaunchProgress progress, CancellationToken cancellation) throws GameLaunchException {
-        checkCancelled(cancellation);
-        int major = majorVersion <= 0 ? OSUtils.currentJavaMajor() : majorVersion;
-        return ensureJavaRuntime(major, progress, cancellation);
+    /** "aarch64", "x64", or "" for an architecture without Java packages. */
+    public static String hostArchitecture() {
+        return JavaRuntimeManifestService.hostArchitecture();
     }
 
-    private Path ensureJavaRuntime(int major, LaunchProgress progress, CancellationToken cancellation) throws GameLaunchException {
+    /** True when Java of this major is installed or can be downloaded for the given architecture. */
+    public boolean available(int majorVersion, String arch) {
+        int major = majorVersion <= 0 ? OSUtils.currentJavaMajor() : majorVersion;
+        Path java = locator.findJava(LauncherPaths.javaRuntimeDirectory(manifests.runtimeId(major, arch)));
+        if (java != null && Files.isRegularFile(java)) return true;
+        try {
+            return manifests.available(major, arch);
+        } catch (Exception exception) {
+            // Unknown (e.g. offline): let the native path try and report its own error.
+            LauncherLog.error("Unable to check Java " + major + " for " + arch + ".", exception);
+            return true;
+        }
+    }
+
+    public Path ensureJava(int majorVersion, String arch, LaunchProgress progress, CancellationToken cancellation) throws GameLaunchException {
         checkCancelled(cancellation);
-        String runtimeId = manifests.runtimeId(major);
+        int major = majorVersion <= 0 ? OSUtils.currentJavaMajor() : majorVersion;
+        return ensureJavaRuntime(major, arch, progress, cancellation);
+    }
+
+    private Path ensureJavaRuntime(int major, String arch, LaunchProgress progress, CancellationToken cancellation) throws GameLaunchException {
+        checkCancelled(cancellation);
+        String runtimeId = manifests.runtimeId(major, arch);
         Path root = LauncherPaths.javaRuntimeDirectory(runtimeId);
         Path tempRoot = root.resolveSibling(runtimeId + ".tmp");
 
@@ -57,7 +76,7 @@ public final class JavaRuntimeService {
         try {
             checkCancelled(cancellation);
             LauncherLog.info("Loading Java runtime manifest: " + JavaRuntimeManifestService.MANIFEST_URL);
-            runtime = manifests.resolve(major);
+            runtime = manifests.resolve(major, arch);
             checkCancelled(cancellation);
         } catch (CancellationException exception) {
             throw exception;

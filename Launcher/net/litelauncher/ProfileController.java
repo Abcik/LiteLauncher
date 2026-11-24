@@ -10,6 +10,7 @@ import net.litelauncher.frontend.modules.auth.SkinAvatar;
 import net.litelauncher.frontend.modules.skin.DefaultPlayerSkin;
 
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -19,6 +20,8 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 final class ProfileController {
+
+    private static final int SESSION_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
     private final LauncherStore store;
     private final LauncherState state;
@@ -43,6 +46,15 @@ final class ProfileController {
 
     void start() {
         refreshProfile(selected());
+        // Cheap check (no network while the token is fresh) that keeps launches instant.
+        Timer sessionTimer = new Timer(SESSION_CHECK_INTERVAL_MS, _ -> {
+            Profile profile = selected();
+            if (profile != null && profile.microsoft()) {
+                Thread.ofVirtual().name("microsoft-session-keepalive")
+                        .start(() -> services.authService().keepMicrosoftSessionFresh(profile));
+            }
+        });
+        sessionTimer.start();
         services.elyBySkinService().prune(profiles);
         Thread.ofVirtual().name("ely-authlib-refresh").start(services.elyByAuthlibCatalog()::refresh);
     }
@@ -193,6 +205,7 @@ final class ProfileController {
 
         String oldSelected = state.selectedProfileId;
         Profile removed = profiles.get(index);
+        if (!services.authService().deleteMicrosoftProfile(removed)) return;
         List<Profile> updated = new ArrayList<>(profiles);
         updated.remove(index);
         profiles = List.copyOf(updated);
@@ -211,15 +224,6 @@ final class ProfileController {
         }
     }
 
-    void refreshOfflineSkinBeforeLaunch(Profile profile) {
-        if (profile == null || profile.microsoft() || !profile.elyBy()) return;
-        services.elyBySkinService().refresh(profile);
-        SwingUtilities.invokeLater(() -> {
-            invalidateAvatar(profile.id());
-            store.emit(LauncherStore.Event.PROFILE_APPEARANCE_CHANGED);
-        });
-    }
-
     void applyUpdate(Profile profile) {
         if (profile == null) return;
         refreshingProfiles.remove(profile.id());
@@ -234,24 +238,6 @@ final class ProfileController {
 
         store.emit(LauncherStore.Event.PROFILES_CHANGED);
         if (Objects.equals(state.selectedProfileId, profile.id())) store.emit(LauncherStore.Event.SELECTED_PROFILE_CHANGED);
-    }
-
-    void removeExpiredMicrosoftProfile(Profile profile) {
-        int index = indexOf(profile == null ? null : profile.id());
-        if (index < 0) return;
-
-        String oldSelected = state.selectedProfileId;
-        List<Profile> updated = new ArrayList<>(profiles);
-        updated.remove(index);
-        profiles = List.copyOf(updated);
-        normalizeSelection();
-        persistProfiles();
-
-        store.saveStateAndEmit(LauncherStore.Event.PROFILES_CHANGED);
-        if (!Objects.equals(oldSelected, state.selectedProfileId)) {
-            store.emit(LauncherStore.Event.SELECTED_PROFILE_CHANGED);
-            refreshProfile(selected());
-        }
     }
 
     private void updateMicrosoftProfile(Profile profile, String errorKey, String logMessage, Consumer<String> onError,
@@ -270,7 +256,6 @@ final class ProfileController {
             } catch (AuthException exception) {
                 LauncherLog.error(logMessage, exception);
                 SwingUtilities.invokeLater(() -> {
-                    if (exception.expiredSession()) removeExpiredMicrosoftProfile(profile);
                     if (onError != null) onError.accept(InformationMessages.text(exception.expiredSession()
                             ? InformationMessages.SIGN_IN_ERROR : errorKey));
                     if (onComplete != null) onComplete.run();
@@ -300,7 +285,6 @@ final class ProfileController {
                 LauncherLog.error("Unable to refresh Microsoft profile.", exception);
                 SwingUtilities.invokeLater(() -> {
                     refreshingProfiles.remove(profile.id());
-                    if (exception.expiredSession()) removeExpiredMicrosoftProfile(profile);
                 });
             } catch (Exception exception) {
                 LauncherLog.error("Unable to refresh Microsoft profile.", exception);

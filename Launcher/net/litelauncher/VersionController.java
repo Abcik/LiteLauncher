@@ -26,6 +26,9 @@ final class VersionController {
     private List<Version> visibleVersions = List.of();
     private boolean refreshing;
     private boolean importingModpack;
+    private boolean deleting;
+
+    boolean busy() { return importingModpack || deleting; }
 
     VersionController(LauncherStore store, LauncherState state, LauncherServices services) {
         this.store = store;
@@ -53,7 +56,7 @@ final class VersionController {
     }
 
     void refreshRemote() {
-        if (refreshing) return;
+        if (refreshing || busy() || store.launchBusy()) return;
         refreshing = true;
         boolean instances = state.instancesStorageSystem;
         Thread.ofVirtual().name("versions-refresh").start(() -> {
@@ -75,7 +78,7 @@ final class VersionController {
     }
 
     void refreshLocal() {
-        if (refreshing) return;
+        if (refreshing || busy() || store.launchBusy()) return;
         refreshing = true;
         boolean instances = state.instancesStorageSystem;
         List<Version> current = List.copyOf(versions);
@@ -88,7 +91,7 @@ final class VersionController {
                         refreshLocal();
                         return;
                     }
-                    applyIfChanged(loaded);
+                    applyIfChanged(mergePendingLoaders(loaded, versions));
                 });
             } catch (Exception exception) {
                 LauncherLog.error("Unable to refresh local versions.", exception);
@@ -99,7 +102,7 @@ final class VersionController {
 
     void importModpack(Path file, Consumer<String> onError) {
         if (store.runOnEdt(() -> importModpack(file, onError))) return;
-        if (file == null || importingModpack) return;
+        if (file == null || refreshing || busy() || store.launchBusy()) return;
 
         importingModpack = true;
         boolean instances = state.instancesStorageSystem;
@@ -144,10 +147,11 @@ final class VersionController {
     void delete(Version removed) {
         if (store.runOnEdt(() -> delete(removed))) return;
         if (removed == null || byId(removed.id()) == null) return;
-        if ((!removed.loaded() && !removed.custom() && !removed.modpack()) || refreshing || importingModpack) return;
+        if ((!removed.loaded() && !removed.custom() && !removed.modpack()) || refreshing || busy() || store.launchBusy()) return;
 
         boolean instances = state.instancesStorageSystem;
         refreshing = true;
+        deleting = true;
         List<Version> current = List.copyOf(versions);
         Thread.ofVirtual().name("version-delete").start(() -> {
             try {
@@ -155,12 +159,14 @@ final class VersionController {
                 List<Version> loaded = services.versionService().refreshLocalVersions(current, instances);
                 SwingUtilities.invokeLater(() -> {
                     refreshing = false;
+                    deleting = false;
                     apply(loaded);
                 });
             } catch (Exception exception) {
                 LauncherLog.error("Unable to delete version: " + removed.id(), exception);
                 SwingUtilities.invokeLater(() -> {
                     refreshing = false;
+                    deleting = false;
                     refreshLocal();
                 });
             }
@@ -180,6 +186,7 @@ final class VersionController {
 
     void chooseLoaderVersion(LoaderVersion loader, Version baseVersion) {
         if (store.runOnEdt(() -> chooseLoaderVersion(loader, baseVersion))) return;
+        if (refreshing || busy() || store.launchBusy()) return;
         if (loader == null || baseVersion == null) return;
 
         Version existing = byId(loader.id());

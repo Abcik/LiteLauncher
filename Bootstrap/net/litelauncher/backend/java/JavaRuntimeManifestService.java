@@ -19,9 +19,9 @@ final class JavaRuntimeManifestService {
     static final String MANIFEST_URL = "https://litelauncher.net/api/v1/launcher/java_manifest.json";
 
     private static final int SCHEMA_VERSION = 1;
-    private static final int MAX_ATTEMPTS = 3;
-    private static final int CONNECT_TIMEOUT_MILLIS = 20_000;
-    private static final int READ_TIMEOUT_MILLIS = 30_000;
+    private static final int MAX_ATTEMPTS = 2;
+    private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
+    private static final int READ_TIMEOUT_MILLIS = 15_000;
 
     private int normalizeMajor(int major) {
         return major == 16 ? 17 : major;
@@ -48,6 +48,11 @@ final class JavaRuntimeManifestService {
         Map<String, Object> version = optionalObject(runtimes.get(Integer.toString(major)));
         Map<String, Object> systems = version == null ? null : optionalObject(version.get(os));
         Map<String, Object> runtime = systems == null ? null : optionalObject(systems.get(arch));
+        // No ARM build (e.g. Java 25 for Windows ARM): Windows 11 and Rosetta 2 run the x64 one.
+        if (runtime == null && systems != null && "aarch64".equals(arch) && !"linux".equals(os)) {
+            arch = "x64";
+            runtime = optionalObject(systems.get(arch));
+        }
         if (runtime == null) throw new IOException("Java " + major + " is unavailable for " + os + "/" + arch + ".");
 
         String name = text(runtime.get("name"), "name");

@@ -23,10 +23,17 @@ import java.util.Map;
 
 public final class MicrosoftAuthClient {
 
-    private static final Duration TOKEN_REFRESH_MARGIN = Duration.ofMinutes(5);
+    private final HttpClient http;
+    private final MinecraftProfileClient profiles;
 
-    private final HttpClient http = BackendUtils.http();
-    private final MinecraftProfileClient profiles = new MinecraftProfileClient(http);
+    public MicrosoftAuthClient() {
+        this(BackendUtils.http());
+    }
+
+    MicrosoftAuthClient(HttpClient http) {
+        this.http = http;
+        this.profiles = new MinecraftProfileClient(http);
+    }
 
     public MicrosoftAuthResult authenticate(String code, String codeVerifier, URI redirectUri) throws AuthException {
         MicrosoftTokens microsoft = requestMicrosoftTokens(code, codeVerifier, redirectUri);
@@ -34,101 +41,49 @@ public final class MicrosoftAuthClient {
         profiles.ensureMinecraftOwnership(minecraft.accessToken());
         MinecraftProfileClient.ProfileData profile = profiles.fetchProfile(minecraft.accessToken());
 
-        return resultFromProfile(
-                MicrosoftAuthConfig.CLIENT_ID,
-                redirectUri.toString(),
-                minecraft.accessToken(),
-                minecraft.expiresAt(),
-                microsoft.refreshToken(),
-                minecraft.xuid(),
-                profile,
-                null
-        );
+        MicrosoftSession session = new MicrosoftSession(MicrosoftAuthConfig.CLIENT_ID, redirectUri.toString(), profile.id(),
+                minecraft.accessToken(), minecraft.expiresAt(), microsoft.refreshToken(), minecraft.xuid(), Instant.now());
+        return new MicrosoftAuthResult(session, profileCache(profile, null, null));
     }
 
-    public MicrosoftAuthResult refresh(MicrosoftSession session, MicrosoftProfileCache fallback) throws AuthException {
-        if (session == null) throw new AuthException("Microsoft session was not found.");
-
-        MicrosoftSession active = session;
-        if (needsRefresh(active)) active = refreshMinecraftToken(active);
-
-        MinecraftProfileClient.ProfileData profile = profiles.fetchProfile(active.minecraftAccessToken(), cachedCapes(fallback));
-        return resultFromProfile(
-                active.clientId(),
-                active.redirectUri(),
-                active.minecraftAccessToken(),
-                active.minecraftAccessTokenExpiresAt(),
-                active.microsoftRefreshToken(),
-                active.xuid(),
-                profile,
-                fallback
-        );
+    MicrosoftProfileCache refresh(MicrosoftSession session, MicrosoftProfileCache fallback) throws AuthException {
+        return profileCache(profiles.fetchProfile(session.minecraftAccessToken(), cachedCapes(fallback)), fallback, null);
     }
 
-    public MicrosoftAuthResult uploadSkin(MicrosoftSession session, MicrosoftProfileCache fallback, byte[] skinPng, boolean slim) throws AuthException {
-        if (session == null) throw new AuthException("Microsoft session was not found.");
-
-        MicrosoftSession active = session;
-        if (needsRefresh(active)) active = refreshMinecraftToken(active);
-
-        MinecraftProfileClient.ProfileData profile = profiles.uploadSkin(active.minecraftAccessToken(), skinPng, slim, cachedCapes(fallback));
-        return resultFromProfile(
-                active.clientId(),
-                active.redirectUri(),
-                active.minecraftAccessToken(),
-                active.minecraftAccessTokenExpiresAt(),
-                active.microsoftRefreshToken(),
-                active.xuid(),
-                profile,
-                fallback,
-                Base64.getEncoder().encodeToString(skinPng)
-        );
+    MicrosoftProfileCache uploadSkin(MicrosoftSession session, MicrosoftProfileCache fallback, byte[] skinPng, boolean slim) throws AuthException {
+        MinecraftProfileClient.ProfileData profile = profiles.uploadSkin(session.minecraftAccessToken(), skinPng, slim, cachedCapes(fallback));
+        return profileCache(profile, fallback, Base64.getEncoder().encodeToString(skinPng));
     }
 
-    public MicrosoftAuthResult setCape(MicrosoftSession session, MicrosoftProfileCache fallback, String capeId) throws AuthException {
-        if (session == null) throw new AuthException("Microsoft session was not found.");
-
-        MicrosoftSession active = session;
-        if (needsRefresh(active)) active = refreshMinecraftToken(active);
-
-        MinecraftProfileClient.ProfileData profile = profiles.setCape(active.minecraftAccessToken(), capeId, cachedCapes(fallback));
-        return resultFromProfile(
-                active.clientId(),
-                active.redirectUri(),
-                active.minecraftAccessToken(),
-                active.minecraftAccessTokenExpiresAt(),
-                active.microsoftRefreshToken(),
-                active.xuid(),
-                profile,
-                fallback
-        );
+    MicrosoftProfileCache setCape(MicrosoftSession session, MicrosoftProfileCache fallback, String capeId) throws AuthException {
+        return profileCache(profiles.setCape(session.minecraftAccessToken(), capeId, cachedCapes(fallback)), fallback, null);
     }
 
-    private boolean needsRefresh(MicrosoftSession session) {
-        return !AuthUtils.hasText(session.minecraftAccessToken())
-                || session.minecraftAccessTokenExpiresAt() == null
-                || session.minecraftAccessTokenExpiresAt().isBefore(Instant.now().plus(TOKEN_REFRESH_MARGIN));
-    }
-
-    private MicrosoftSession refreshMinecraftToken(MicrosoftSession session) throws AuthException {
+    MicrosoftSession refreshMinecraftToken(MicrosoftSession session, SessionSaver saver) throws AuthException {
         MicrosoftTokens microsoft = refreshMicrosoftTokens(session.microsoftRefreshToken(), session.redirectUri());
+        // Keep rotated Microsoft credentials even if a later Xbox/Minecraft request fails.
+        MicrosoftSession credentials = new MicrosoftSession(session.clientId(), session.redirectUri(), session.profileId(),
+                session.minecraftAccessToken(), session.minecraftAccessTokenExpiresAt(),
+                AuthUtils.firstText(microsoft.refreshToken(), session.microsoftRefreshToken()), session.xuid(), Instant.now());
+        saver.save(credentials);
         MinecraftToken minecraft = requestMinecraftToken(microsoft.accessToken());
 
-        return new MicrosoftSession(
+        MicrosoftSession updated = new MicrosoftSession(
                 session.clientId(),
                 session.redirectUri(),
                 session.profileId(),
                 minecraft.accessToken(),
                 minecraft.expiresAt(),
-                AuthUtils.firstText(microsoft.refreshToken(), session.microsoftRefreshToken()),
+                credentials.microsoftRefreshToken(),
                 AuthUtils.firstText(minecraft.xuid(), session.xuid(), ""),
                 Instant.now()
         );
+        saver.save(updated);
+        return updated;
     }
 
     private MinecraftToken requestMinecraftToken(String microsoftAccessToken) throws AuthException {
-        XboxUserToken xboxUser = authenticateXbox(microsoftAccessToken);
-        XboxSecurityToken xsts = authorizeXsts(xboxUser.token());
+        XboxSecurityToken xsts = authorizeXsts(authenticateXbox(microsoftAccessToken));
         MinecraftToken minecraft = authenticateMinecraft(xsts.userHash(), xsts.token());
         return new MinecraftToken(minecraft.accessToken(), minecraft.expiresAt(), xsts.xuid());
     }
@@ -141,7 +96,7 @@ public final class MicrosoftAuthClient {
         form.put("grant_type", "authorization_code");
         form.put("code_verifier", codeVerifier);
         form.put("scope", MicrosoftAuthConfig.SCOPE);
-        return parseMicrosoftTokens(postForm(MicrosoftAuthConfig.TOKEN_URL, form), true);
+        return parseMicrosoftTokens(postForm(MicrosoftAuthConfig.TOKEN_URL, form, false), true);
     }
 
     private MicrosoftTokens refreshMicrosoftTokens(String refreshToken, String redirectUri) throws AuthException {
@@ -164,7 +119,7 @@ public final class MicrosoftAuthClient {
         return new MicrosoftTokens(accessToken, refreshToken);
     }
 
-    private XboxUserToken authenticateXbox(String microsoftAccessToken) throws AuthException {
+    private String authenticateXbox(String microsoftAccessToken) throws AuthException {
         JsonObject properties = new JsonObject();
         properties.put("AuthMethod", "RPS");
         properties.put("SiteName", "user.auth.xboxlive.com");
@@ -179,7 +134,7 @@ public final class MicrosoftAuthClient {
         String token = response.getString("Token");
         String userHash = xui(response).getString("uhs");
         if (!AuthUtils.hasText(token) || !AuthUtils.hasText(userHash)) throw new AuthException("Xbox Live did not return the required sign-in data.");
-        return new XboxUserToken(token, userHash);
+        return token;
     }
 
     private XboxSecurityToken authorizeXsts(String xboxUserToken) throws AuthException {
@@ -219,34 +174,15 @@ public final class MicrosoftAuthClient {
         return fallback == null ? List.of() : fallback.capes();
     }
 
-    private MicrosoftAuthResult resultFromProfile(String clientId, String redirectUri, String accessToken, Instant expiresAt,
-                                                  String refreshToken, String xuid, MinecraftProfileClient.ProfileData profile,
-                                                  MicrosoftProfileCache fallback) {
-        return resultFromProfile(clientId, redirectUri, accessToken, expiresAt, refreshToken, xuid, profile, fallback, null);
-    }
-
-    private MicrosoftAuthResult resultFromProfile(String clientId, String redirectUri, String accessToken, Instant expiresAt,
-                                                  String refreshToken, String xuid, MinecraftProfileClient.ProfileData profile,
-                                                  MicrosoftProfileCache fallback, String uploadedSkinPng) {
-        Instant now = Instant.now();
-        MicrosoftSession session = new MicrosoftSession(
-                clientId,
-                redirectUri,
-                profile.id(),
-                accessToken,
-                expiresAt,
-                refreshToken,
-                AuthUtils.firstText(xuid, ""),
-                now
-        );
-        MicrosoftProfileCache cache = new MicrosoftProfileCache(
+    private MicrosoftProfileCache profileCache(MinecraftProfileClient.ProfileData profile,
+                                               MicrosoftProfileCache fallback, String uploadedSkinPng) {
+        return new MicrosoftProfileCache(
                 profile.name(),
                 skinImage(profile, fallback, uploadedSkinPng),
                 profile.slim(),
                 mergeCapeImages(profile.capes(), fallback == null ? List.of() : fallback.capes()),
-                now
+                Instant.now()
         );
-        return new MicrosoftAuthResult(session, cache);
     }
 
     private String skinImage(MinecraftProfileClient.ProfileData profile, MicrosoftProfileCache fallback, String uploadedSkinPng) {
@@ -275,13 +211,9 @@ public final class MicrosoftAuthClient {
     }
 
 
-    private JsonObject postForm(String url, Map<String, String> form) throws AuthException {
-        return postForm(url, form, false);
-    }
-
     private JsonObject postForm(String url, Map<String, String> form, boolean expiredOnFailure) throws AuthException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(AuthUtils.formEncode(form), StandardCharsets.UTF_8))
@@ -291,7 +223,7 @@ public final class MicrosoftAuthClient {
 
     private JsonObject postJson(String url, JsonObject payload, Map<String, String> headers) throws AuthException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(JsonWriter.string().value(payload).done(), StandardCharsets.UTF_8));
@@ -306,7 +238,7 @@ public final class MicrosoftAuthClient {
                 String details = AuthUtils.errorDetails(response.body(), "HTTP " + response.statusCode());
                 LauncherLog.error("Microsoft auth request failed (" + request.method() + ' ' + url + "): HTTP "
                         + response.statusCode() + " - " + details, null);
-                if (sessionRejected(response.statusCode(), expiredOnFailure)) {
+                if (sessionRejected(response.body(), expiredOnFailure)) {
                     throw AuthException.expiredSession("Microsoft session expired or was rejected. See launcher log for details.");
                 }
                 throw new AuthException("Authorization failed. See launcher log for details.");
@@ -325,8 +257,20 @@ public final class MicrosoftAuthClient {
         }
     }
 
-    private boolean sessionRejected(int statusCode, boolean refreshRequest) {
-        return statusCode == 401 || statusCode == 403 || refreshRequest && statusCode == 400;
+    private boolean sessionRejected(String body, boolean refreshRequest) {
+        if (!refreshRequest) return false;
+        try {
+            String error = JsonParser.object().from(body).getString("error", "");
+            return "invalid_grant".equals(error) || "interaction_required".equals(error)
+                    || "login_required".equals(error) || "consent_required".equals(error);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @FunctionalInterface
+    interface SessionSaver {
+        void save(MicrosoftSession session) throws AuthException;
     }
 
     private JsonObject xui(JsonObject response) {
@@ -339,8 +283,6 @@ public final class MicrosoftAuthClient {
 
 
     private record MicrosoftTokens(String accessToken, String refreshToken) { }
-
-    private record XboxUserToken(String token, String userHash) { }
 
     private record XboxSecurityToken(String token, String userHash, String xuid) { }
 

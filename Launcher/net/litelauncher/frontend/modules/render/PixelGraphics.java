@@ -154,7 +154,7 @@ public final class PixelGraphics implements AutoCloseable {
                 try (InputStream stream = PixelGraphics.class.getClassLoader().getResourceAsStream(path)) {
                     if (stream == null) return MISSING_TEXTURE;
 
-                    BufferedImage image = ImageIO.read(stream);
+                    BufferedImage image = toIntArgb(ImageIO.read(stream));
                     return image != null ? image : MISSING_TEXTURE;
                 }
             }
@@ -162,11 +162,25 @@ public final class PixelGraphics implements AutoCloseable {
             Path file = Paths.get(path);
             if (!Files.exists(file)) return MISSING_TEXTURE;
 
-            BufferedImage image = ImageIO.read(file.toFile());
+            BufferedImage image = toIntArgb(ImageIO.read(file.toFile()));
             return image != null ? image : MISSING_TEXTURE;
         } catch (IOException _) {
             return MISSING_TEXTURE;
         }
+    }
+
+    /**
+     * PNGs usually load as 4BYTE_ABGR or indexed images. Drawing those into the INT_ARGB canvas
+     * converts every pixel on every frame; converting once at load makes later draws a plain blit.
+     */
+    private static BufferedImage toIntArgb(BufferedImage image) {
+        if (image == null || image.getType() == BufferedImage.TYPE_INT_ARGB) return image;
+        BufferedImage converted = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = converted.createGraphics();
+        graphics.setComposite(AlphaComposite.Src);
+        graphics.drawImage(image, 0, 0, null);
+        graphics.dispose();
+        return converted;
     }
 
     private static BufferedImage createMissingTexture() {

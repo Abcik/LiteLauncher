@@ -21,7 +21,8 @@ final class LauncherManifestService {
     private static final String PUBLIC_KEY = "MCowBQYDK2VwAyEA3Paqfi8Xb+fEZBAxGy1LjMH4YI3SlPW3rKT6kZH7APA=";
     private static final String VERSION_MANIFEST_URL = "https://litelauncher.net/api/v1/launcher/version_manifest.json";
     private static final int BUFFER_SIZE = 64 * 1024;
-    private static final Duration MANIFEST_TIMEOUT = Duration.ofSeconds(5);
+    // Startup must not wait for a dead network: after this the cached manifest is used.
+    private static final Duration MANIFEST_TIMEOUT = Duration.ofSeconds(2);
 
     private final BootstrapLog log;
     private final HttpClient http = HttpClient.newBuilder()

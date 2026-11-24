@@ -12,8 +12,4 @@ public record MicrosoftAuthResult(MicrosoftSession session, MicrosoftProfileCach
     public Profile profile() {
         return cache.profile(session.profileId());
     }
-
-    public LaunchAccount launchAccount() {
-        return LaunchAccount.online(profile(), session.minecraftAccessToken(), session.xuid());
-    }
 }

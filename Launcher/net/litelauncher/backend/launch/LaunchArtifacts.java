@@ -44,6 +44,18 @@ final class LaunchArtifacts {
         return files;
     }
 
+    /**
+     * Mojang ships ARM natives (e.g. org.lwjgl:lwjgl:3.3.1:natives-macos-arm64) only since 1.19.
+     * Without them an ARM Java cannot load the game's native libraries.
+     */
+    boolean hasArmNatives(ResolvedVersion version) {
+        String suffix = OSUtils.os().macos() ? ":natives-macos-arm64" : ":natives-windows-arm64";
+        for (JsonObject library : version.libraries()) {
+            if (library.getString("name", "").endsWith(suffix)) return true;
+        }
+        return false;
+    }
+
     List<NativeLibraryExtractor.NativeLibrary> nativeLibraries(ResolvedVersion version) throws GameLaunchException {
         List<NativeLibraryExtractor.NativeLibrary> result = new ArrayList<>();
         for (JsonObject library : version.libraries()) {

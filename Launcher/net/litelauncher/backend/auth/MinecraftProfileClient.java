@@ -185,7 +185,7 @@ final class MinecraftProfileClient {
 
     private HttpRequest.Builder profileRequestBuilder(String url, String token) {
         return HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")
                 .header("Authorization", "Bearer " + token);
     }
@@ -219,7 +219,7 @@ final class MinecraftProfileClient {
 
     private JsonObject getJson(String url, Map<String, String> headers) throws AuthException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")
                 .GET();
         headers.forEach(builder::header);
@@ -233,8 +233,8 @@ final class MinecraftProfileClient {
                 String details = AuthUtils.errorDetails(response.body(), "HTTP " + response.statusCode());
                 LauncherLog.error("Minecraft profile request failed (" + request.method() + ' ' + url + "): HTTP "
                         + response.statusCode() + " - " + details, null);
-                if (response.statusCode() == 401 || response.statusCode() == 403) {
-                    throw AuthException.expiredSession("Minecraft session expired or was rejected. See launcher log for details.");
+                if (response.statusCode() == 401) {
+                    throw AuthException.accessTokenRejected("Minecraft access token was rejected. See launcher log for details.");
                 }
                 throw new AuthException("Minecraft profile request failed. See launcher log for details.");
             }

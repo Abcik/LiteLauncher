@@ -13,25 +13,38 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
 
 public final class AuthService {
 
     private static final Duration LAUNCH_TOKEN_REFRESH_MARGIN = Duration.ofMinutes(5);
+    /*
+     * Minecraft tokens live ~24h and the game cannot renew its own token, so a new game gets one
+     * with at least this much life left. Renewing only below this keeps login_with_xbox calls to
+     * about one per day: that endpoint answers 429 when it is called on every launch.
+     */
+    private static final Duration GAME_TOKEN_MIN_LIFETIME = Duration.ofHours(6);
+    /* Launch normally finds a fresh token; this wait only matters when renewal is still running. */
+    private static final Duration LAUNCH_SESSION_WAIT = Duration.ofSeconds(15);
 
     private final OfflineProfileStore offlineProfiles = new OfflineProfileStore();
     private final MicrosoftSessionStore microsoftSessions = new MicrosoftSessionStore();
     private final MicrosoftProfileCacheStore microsoftProfileCache = new MicrosoftProfileCacheStore();
-    private final MicrosoftAuthClient microsoftAuth = new MicrosoftAuthClient();
+    private final MicrosoftAuthClient microsoftAuth;
     private final MicrosoftCallbackPageRenderer callbackPages;
     private final MicrosoftCallbackServer callbackServer;
 
     public AuthService(MicrosoftCallbackPageRenderer callbackPages) {
+        this(callbackPages, new MicrosoftAuthClient());
+    }
+
+    AuthService(MicrosoftCallbackPageRenderer callbackPages, MicrosoftAuthClient microsoftAuth) {
+        this.microsoftAuth = microsoftAuth;
         this.callbackPages = callbackPages == null ? MicrosoftCallbackPageRenderer.fallback() : callbackPages;
         this.callbackServer = new MicrosoftCallbackServer(this.callbackPages);
     }
@@ -40,8 +53,7 @@ public final class AuthService {
         ensureFiles();
 
         List<Profile> profiles = new ArrayList<>(offlineProfiles.read());
-        for (Map.Entry<String, MicrosoftSession> entry : microsoftSessions.read().entrySet()) {
-            MicrosoftSession session = entry.getValue();
+        for (MicrosoftSession session : microsoftSessions.read().values()) {
             MicrosoftProfileCache cache = microsoftProfileCache.read(session.profileId());
             profiles.add(new MicrosoftAuthResult(session, cache).profile());
         }
@@ -50,15 +62,19 @@ public final class AuthService {
 
     public void saveProfiles(List<Profile> profiles) {
         offlineProfiles.write(profiles);
-        try {
-            Set<String> keep = profiles == null ? Set.of() : profiles.stream()
-                    .filter(profile -> profile != null && profile.microsoft())
-                    .map(Profile::id)
-                    .collect(Collectors.toSet());
-            microsoftSessions.prune(keep);
-            microsoftProfileCache.prune(keep);
-        } catch (Exception exception) {
-            LauncherLog.error("Unable to prune Microsoft sessions.", exception);
+        // An older launcher window's list must not delete accounts added by another window.
+    }
+
+    public boolean deleteMicrosoftProfile(Profile profile) {
+        if (profile == null || !profile.microsoft()) return true;
+        try (var account = MicrosoftAccountLock.tryAccount(profile.id())) {
+            if (account == null) return false;
+            microsoftSessions.remove(profile.id());
+            microsoftProfileCache.delete(profile.id());
+            return true;
+        } catch (AuthException exception) {
+            LauncherLog.error("Unable to delete Microsoft profile.", exception);
+            return false;
         }
     }
 
@@ -76,7 +92,10 @@ public final class AuthService {
             openBrowser(auth.authorizationUrl());
             String code = waitForCallback(auth);
             MicrosoftAuthResult result = microsoftAuth.authenticate(code, auth.codeVerifier(), auth.redirectUri());
-            saveMicrosoftResult(result);
+            try (var ignored = MicrosoftAccountLock.account(result.session().profileId())) {
+                microsoftSessions.save(result.session());
+                microsoftProfileCache.save(result.session().profileId(), result.cache());
+            }
             Profile profile = result.profile();
             auth.page().complete(callbackPages.successHtml(auth.theme(), auth.language(), profile.username(), profile.skinPng(), profile.slim()));
             return profile;
@@ -90,69 +109,109 @@ public final class AuthService {
 
     public Profile refreshMicrosoftProfile(Profile profile) throws AuthException {
         if (profile == null || !profile.microsoft()) return null;
-        return updateMicrosoftProfile(profile, microsoftAuth::refresh).profile();
+        return updateMicrosoftProfile(profile, microsoftAuth::refresh);
     }
 
     public Profile uploadMicrosoftSkin(Profile profile, byte[] skinPng, boolean slim) throws AuthException {
         if (profile == null || !profile.microsoft()) return profile;
-        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.uploadSkin(session, cache, skinPng, slim)).profile();
+        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.uploadSkin(session, cache, skinPng, slim));
     }
 
     public Profile setMicrosoftCape(Profile profile, String capeId) throws AuthException {
         if (profile == null || !profile.microsoft()) return profile;
-        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.setCape(session, cache, capeId)).profile();
+        return updateMicrosoftProfile(profile, (session, cache) -> microsoftAuth.setCape(session, cache, capeId));
     }
 
-    public LaunchAccount prepareLaunchAccount(Profile selectedProfile) throws AuthException {
+    public LaunchPreparation prepareLaunchAccount(Profile selectedProfile) throws AuthException {
         if (selectedProfile == null) throw new AuthException("Create or select a profile before launch.");
-        if (!selectedProfile.microsoft()) return LaunchAccount.offline(selectedProfile);
+        return new LaunchPreparation(selectedProfile);
+    }
 
-        MicrosoftSession session = requireMicrosoftSession(selectedProfile);
-        MicrosoftProfileCache cache = microsoftProfileCache.read(session.profileId());
-        if (validForLaunch(session)) {
-            LauncherLog.info("Using cached Microsoft launch session: profile=" + session.profileId()
-                    + ", expiresAt=" + session.minecraftAccessTokenExpiresAt());
-            Profile cachedProfile = cache == null ? selectedProfile : cache.profile(session.profileId());
-            return LaunchAccount.online(cachedProfile, session.minecraftAccessToken(), session.xuid());
-        }
-
-        try {
-            MicrosoftAuthResult updated = updateMicrosoftProfile(selectedProfile, microsoftAuth::refresh);
-            return updated.launchAccount();
+    /**
+     * Background renewal: called on launcher start and periodically, so a launch usually finds
+     * a fresh token and does not touch the network at all. Skips quietly when the account is busy.
+     */
+    public void keepMicrosoftSessionFresh(Profile profile) {
+        if (profile == null || !profile.microsoft()) return;
+        try (var account = MicrosoftAccountLock.tryAccount(profile.id())) {
+            if (account == null) return;
+            MicrosoftSession session = microsoftSessions.read(profile.id());
+            if (session != null) renewIfNeeded(profile, session, account);
         } catch (AuthException exception) {
-            if (exception.expiredSession()) throw exception;
-            return LaunchAccount.offline(selectedProfile);
+            LauncherLog.error("Unable to renew Microsoft session in background.", exception);
         }
     }
 
     private boolean validForLaunch(MicrosoftSession session) {
+        return validFor(session, LAUNCH_TOKEN_REFRESH_MARGIN);
+    }
+
+    private boolean freshForGame(MicrosoftSession session) {
+        return validFor(session, GAME_TOKEN_MIN_LIFETIME);
+    }
+
+    private static boolean validFor(MicrosoftSession session, Duration lifetime) {
         return session != null
                 && AuthUtils.hasText(session.minecraftAccessToken())
                 && session.minecraftAccessTokenExpiresAt() != null
-                && session.minecraftAccessTokenExpiresAt().isAfter(Instant.now().plus(LAUNCH_TOKEN_REFRESH_MARGIN));
+                && session.minecraftAccessTokenExpiresAt().isAfter(Instant.now().plus(lifetime));
     }
 
-    private MicrosoftAuthResult updateMicrosoftProfile(Profile profile, MicrosoftProfileOperation operation) throws AuthException {
-        MicrosoftSession session = requireMicrosoftSession(profile);
+    /** Must be called under the account lock. Keeps a still usable token when renewal fails (429, network). */
+    private MicrosoftSession renewIfNeeded(Profile profile, MicrosoftSession session, MicrosoftAccountLock account) throws AuthException {
+        if (freshForGame(session) || account.inUse()) return session;
+        try {
+            return microsoftAuth.refreshMinecraftToken(session, microsoftSessions::save);
+        } catch (AuthException exception) {
+            if (exception.expiredSession() || !validForLaunch(session)) throw exception;
+            LauncherLog.error("Unable to renew Microsoft session; the current token is still valid.", exception);
+            return requireMicrosoftSession(profile);
+        }
+    }
+
+    private Profile updateMicrosoftProfile(Profile profile, MicrosoftProfileOperation operation) throws AuthException {
+        MicrosoftSession session;
+        try (var account = MicrosoftAccountLock.account(profile.id())) {
+            session = renewIfNeeded(profile, requireMicrosoftSession(profile), account);
+        }
+        // Appearance downloads must neither delay launch authentication nor write an older token back.
         MicrosoftProfileCache cache = microsoftProfileCache.read(session.profileId());
-        MicrosoftAuthResult updated = operation.run(session, cache);
-        saveMicrosoftResult(updated);
-        return updated;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                MicrosoftProfileCache updated = operation.run(session, cache);
+                try (var ignored = MicrosoftAccountLock.account(profile.id())) {
+                    MicrosoftSession latest = requireMicrosoftSession(profile);
+                    microsoftProfileCache.save(latest.profileId(), updated);
+                    return updated.profile(latest.profileId());
+                }
+            } catch (AuthException exception) {
+                if (!exception.accessTokenRejected()) throw exception;
+                try (var account = MicrosoftAccountLock.account(profile.id())) {
+                    MicrosoftSession latest = requireMicrosoftSession(profile);
+                    boolean sameToken = Objects.equals(latest.minecraftAccessToken(), session.minecraftAccessToken());
+                    if (sameToken) latest = rejectAccessToken(latest);
+                    if (attempt > 0) throw exception;
+                    if (!sameToken && validForLaunch(latest)) session = latest;
+                    else {
+                        if (account.inUse()) throw exception;
+                        session = microsoftAuth.refreshMinecraftToken(latest, microsoftSessions::save);
+                    }
+                }
+            }
+        }
+    }
+
+    private MicrosoftSession rejectAccessToken(MicrosoftSession session) throws AuthException {
+        MicrosoftSession rejected = new MicrosoftSession(session.clientId(), session.redirectUri(), session.profileId(),
+                null, null, session.microsoftRefreshToken(), session.xuid(), Instant.now());
+        microsoftSessions.save(rejected);
+        return rejected;
     }
 
     private MicrosoftSession requireMicrosoftSession(Profile profile) throws AuthException {
-        if (profile == null || !profile.microsoft()) throw AuthException.expiredSession("Microsoft session was not found.");
         MicrosoftSession session = microsoftSessions.read(profile.id());
-        if (session == null) {
-            microsoftProfileCache.delete(profile.id());
-            throw AuthException.expiredSession("Microsoft session was not found.");
-        }
+        if (session == null) throw AuthException.expiredSession("Microsoft session was not found.");
         return session;
-    }
-
-    private void saveMicrosoftResult(MicrosoftAuthResult result) throws AuthException {
-        microsoftSessions.save(result.session());
-        microsoftProfileCache.save(result.session().profileId(), result.cache());
     }
 
     private String waitForCallback(PendingMicrosoftAuth auth) throws AuthException {
@@ -183,14 +242,110 @@ public final class AuthService {
             Files.createDirectories(LauncherPaths.authDirectory());
             microsoftProfileCache.ensureDirectory();
             if (!Files.exists(LauncherPaths.offlineSessionsFile())) offlineProfiles.write(List.of());
-            if (!Files.exists(LauncherPaths.microsoftSessionsFile())) microsoftSessions.write(Map.of());
+            microsoftSessions.initialize();
         } catch (Exception exception) {
             LauncherLog.error("Unable to prepare auth files.", exception);
         }
     }
 
+    /** Refreshes while files are prepared; keeps the account locked until the game is registered. */
+    public final class LaunchPreparation implements AutoCloseable {
+        private final Profile profile;
+        private final CompletableFuture<MicrosoftSession> ready = new CompletableFuture<>();
+        private MicrosoftAccountLock accountLock;
+        private boolean closed;
+
+        private LaunchPreparation(Profile profile) {
+            this.profile = profile;
+            if (!profile.microsoft()) ready.complete(null);
+            else Thread.ofVirtual().name("microsoft-launch-session").start(this::refresh);
+        }
+
+        private void refresh() {
+            MicrosoftAccountLock acquired = null;
+            try {
+                acquired = MicrosoftAccountLock.account(profile.id());
+                synchronized (this) {
+                    if (closed) return;
+                }
+                MicrosoftSession current = requireMicrosoftSession(profile);
+                // A token with enough life left is reused: no network, no delay, no 429.
+                if (!freshForGame(current) && !acquired.inUse()) {
+                    try {
+                        current = microsoftAuth.refreshMinecraftToken(current, microsoftSessions::save);
+                    } catch (AuthException exception) {
+                        LauncherLog.error("Unable to refresh launch session; trying cached session or offline.", exception);
+                        if (exception.expiredSession() || exception.accessTokenRejected()) {
+                            rejectAccessToken(current);
+                            current = null;
+                        } else current = requireMicrosoftSession(profile);
+                    }
+                }
+                synchronized (this) {
+                    if (closed) return;
+                    if (validForLaunch(current)) {
+                        accountLock = acquired;
+                        acquired = null;
+                    } else current = null;
+                    ready.complete(current);
+                }
+            } catch (Exception exception) {
+                LauncherLog.error("Unable to prepare Microsoft launch session; starting offline.", exception);
+                ready.complete(null);
+            } finally {
+                if (acquired != null) acquired.close();
+            }
+        }
+
+        public LaunchAccount account() {
+            try {
+                MicrosoftSession current = ready.get(LAUNCH_SESSION_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+                synchronized (this) {
+                    // Downloads may have taken longer than the token's remaining lifetime.
+                    if (!closed && validForLaunch(current)) {
+                        MicrosoftProfileCache cache = microsoftProfileCache.read(current.profileId());
+                        LauncherLog.info("Microsoft launch session ready: profile=" + current.profileId()
+                                + ", expiresAt=" + current.minecraftAccessTokenExpiresAt());
+                        return LaunchAccount.online(cache == null ? profile : cache.profile(current.profileId()),
+                                current.minecraftAccessToken(), current.xuid());
+                    }
+                }
+            } catch (TimeoutException exception) {
+                LauncherLog.info("Launch session not ready after file preparation and "
+                        + LAUNCH_SESSION_WAIT.toSeconds() + " seconds; starting offline.");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new CancellationException("Launch session preparation interrupted.");
+            } catch (ExecutionException exception) {
+                LauncherLog.error("Unable to prepare launch account; starting offline.", exception);
+            }
+            close();
+            return LaunchAccount.offline(profile);
+        }
+
+        public synchronized void gameStarted(ProcessHandle process) {
+            if (closed || accountLock == null) return;
+            try {
+                accountLock.gameStarted(process);
+            } catch (AuthException exception) {
+                LauncherLog.error("Unable to register running Minecraft account.", exception);
+            }
+        }
+
+        @Override
+        public synchronized void close() {
+            closed = true;
+            if (accountLock != null) {
+                accountLock.close();
+                accountLock = null;
+            }
+            // An in-flight refresh may still save rotated credentials, then releases its lock.
+            // It must not hand its late result to a game already started offline.
+        }
+    }
+
     @FunctionalInterface
     private interface MicrosoftProfileOperation {
-        MicrosoftAuthResult run(MicrosoftSession session, MicrosoftProfileCache cache) throws AuthException;
+        MicrosoftProfileCache run(MicrosoftSession session, MicrosoftProfileCache cache) throws AuthException;
     }
 }

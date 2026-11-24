@@ -85,7 +85,12 @@ public final class BootstrapBackend {
             );
 
             builder.directory(OSUtils.launcherDirectory().toFile());
-            builder.start();
+            // Nobody reads the launcher's console after Bootstrap exits; an unread pipe can block
+            // the launcher (and Minecraft, which inherits it) once its buffer fills up.
+            builder.redirectInput(ProcessBuilder.Redirect.PIPE);
+            builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            builder.redirectError(ProcessBuilder.Redirect.DISCARD);
+            builder.start().getOutputStream().close();
             log.info("Launcher process started: " + launcher);
         } catch (Exception exception) {
             throw new BootstrapException("Launch error.", exception);

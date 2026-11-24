@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.concurrent.CancellationException;
-import java.util.zip.ZipInputStream;
+import java.util.zip.ZipFile;
+import java.util.zip.CRC32;
 
 final class NativeLibraryExtractor {
 
@@ -34,27 +35,46 @@ final class NativeLibraryExtractor {
         if (!Files.isRegularFile(jar)) throw new GameLaunchException("Native library is missing: " + jar.getFileName());
         Path root = target.toAbsolutePath().normalize();
         Files.createDirectories(root);
-        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(jar))) {
-            for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            var entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
                 checkCancelled(cancellation);
                 if (entry.isDirectory() || excluded(entry.getName(), excludes)) continue;
                 Path out = safeResolve(root, entry.getName());
-                if (Files.isRegularFile(out)) continue;
+                if (Files.isRegularFile(out) && entry.getSize() >= 0 && Files.size(out) == entry.getSize()) continue;
                 Files.createDirectories(out.getParent());
-                try (var output = Files.newOutputStream(out)) {
-                    copy(zip, output, cancellation);
+                Path temp = Files.createTempFile(out.getParent(), out.getFileName() + ".", ".tmp");
+                try {
+                    long crc;
+                    try (var input = zip.getInputStream(entry); var output = Files.newOutputStream(temp)) {
+                        crc = copy(input, output, cancellation);
+                    }
+                    checkCancelled(cancellation);
+                    if (entry.getSize() >= 0 && Files.size(temp) != entry.getSize())
+                        throw new GameLaunchException("Incomplete native library: " + entry.getName());
+                    if (entry.getCrc() >= 0 && entry.getCrc() != crc)
+                        throw new GameLaunchException("Invalid native library: " + entry.getName());
+                    BackendUtils.moveReplace(temp, out);
+                } finally {
+                    Files.deleteIfExists(temp);
                 }
             }
         }
     }
 
-    private void copy(java.io.InputStream input, java.io.OutputStream output, CancellationToken cancellation) throws Exception {
+    private long copy(java.io.InputStream input, java.io.OutputStream output, CancellationToken cancellation) throws Exception {
+        CRC32 crc = new CRC32();
         byte[] buffer = new byte[64 * 1024];
         int read;
         while ((read = input.read(buffer)) >= 0) {
             checkCancelled(cancellation);
-            if (read > 0) output.write(buffer, 0, read);
+            if (read > 0) {
+                output.write(buffer, 0, read);
+                crc.update(buffer, 0, read);
+            }
         }
+        return crc.getValue();
     }
 
     private void checkCancelled(CancellationToken cancellation) {
